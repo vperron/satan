@@ -66,6 +66,11 @@ static void help(void)
 static int handle_cmdline(int argc, char** argv) {
 	int flags = 0;
 
+	int i;
+	for(i=0; i<argc;i++) {
+		debugLog("param #%d = %s", i, argv[i]);
+	}
+
 	while (1+flags < argc && argv[1+flags][0] == '-') {
 		switch (argv[1+flags][1]) {
 			case 'r': 
