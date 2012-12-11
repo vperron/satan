@@ -1,11 +1,12 @@
 #!/bin/sh /etc/rc.common
 
-START=80
+START=20
+OPTS="-r tcp://iso3103.net:51337 -s tcp://iso3103.net:51338"
 APP=config-daemon
 PID_FILE=/var/run/$APP.pid
 
 start() {
-        start-stop-daemon -S -x $APP -p $PID_FILE -m -b
+        start-stop-daemon -S -x $APP -p $PID_FILE -m -b -- $OPTS
 }
 
 stop() {

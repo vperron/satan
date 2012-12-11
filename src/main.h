@@ -49,8 +49,5 @@
 /*
  * GLOBAL variables declaration
  */
-extern void* zmq_ctx;
-extern void* req_socket;
-extern void* sub_socket;
 
 #endif

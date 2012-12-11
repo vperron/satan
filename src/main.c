@@ -25,11 +25,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <zmq.h>
+#include <czmq.h>
 
 #include "main.h"
 #include "lsd.h"
 #include "hiredis/hiredis.h"
+#include "config-daemon.h"
 
 
 /*** DEFINES ***/
@@ -38,14 +39,13 @@
 #define REDIS_PORT 6379
 #define REDIS_TIMEOUT 2 // secs
 
-#define LSD_CONFIG_GROUP "X-CONFIG"
 
 #define DEFAULT_LINGER 0
 #define DEFAULT_HWM 2
 
 
 /*** GLOBAL VARIABLES ***/
-void *zmq_ctx    = NULL; 
+zctx_t *zmq_ctx    = NULL; 
 void *req_socket = NULL;
 void *sub_socket = NULL;
 
@@ -103,56 +103,34 @@ static int handle_cmdline(int argc, char** argv) {
 	return flags;
 }
 
-// From zhelpers.c : receive 0MQ string from socket and convert into C string
-static char *s_recv (void *socket) {
-    zmq_msg_t message;
-    zmq_msg_init (&message);
-    int size = zmq_msg_recv (&message, socket, 0);
-    if (size == -1)
-        return NULL;
-    char *string = malloc (size + 1);
-    memcpy (string, zmq_msg_data (&message), size);
-    zmq_msg_close (&message);
-    string [size] = 0;
-    return (string);
-}
-
-
-static int s_send (void *socket, char *string) {
-    zmq_msg_t message;
-    zmq_msg_init_size (&message, strlen (string));
-    memcpy (zmq_msg_data (&message), string, strlen (string));
-    int size = zmq_msg_send (&message, socket, 0);
-    zmq_msg_close (&message);
-    return (size);
-}
-
 
 //  ---------------------------------------------------------------------
 //  Create socket
-static void* zmq_connect_socket(void* context, char* endpoint, int type, int linger, int64_t hwm) {
+static void *zmq_socket_create (zctx_t *context, char* endpoint, int type, int linger, int hwm) {
 
 	void* socket = NULL;
-	char* topic = "";
+
+	assert(context);
+	assert(endpoint);
 		
-	if(endpoint == NULL || endpoint[0] == 0) {
+	if(endpoint[0] == 0) {
 		errorLog("Trying to open NULL output socket !");
 		return NULL;
 	}
 
-	socket = zmq_socket (context, type);
-// 	zmq_setsockopt (socket, ZMQ_LINGER, &linger, sizeof(linger));
-// 	zmq_setsockopt (socket, ZMQ_SNDHWM, &hwm, sizeof(hwm));
-// 	zmq_setsockopt (socket, ZMQ_RCVHWM, &hwm, sizeof(hwm));
-	zmq_connect (socket, endpoint);
+	socket = zsocket_new (context, type);
+	zsocket_set_sndhwm (socket, hwm);
+	zsocket_set_rcvhwm (socket, hwm);
+	zsocket_set_linger (socket, linger);
 	if(type == ZMQ_SUB)
-		zmq_setsockopt (socket, ZMQ_SUBSCRIBE, topic, strlen (topic));
-	debugLog("Connected to zmq input endpoint : %s",endpoint);
+		zsocket_set_subscribe (socket, "");
+	zsocket_connect (socket, "%s", endpoint);
+	debugLog("Connected to zmq endpoint : %s",endpoint);
 	return socket;
 }
 
 //  ---------------------------------------------------------------------
-//  Create socket
+//  Callback for LSD
 static void callback (lsd_handle_t* handle,
 			int event,
 			const char *node,
@@ -209,38 +187,40 @@ int main(int argc, char *argv[])
 	lsd_join(lsd_handle, LSD_CONFIG_GROUP);
 
 	/*  Init ZMQ */
-	zmq_ctx = zmq_init (1);
-	req_socket = zmq_connect_socket(zmq_ctx, req_server, ZMQ_REQ, DEFAULT_LINGER, DEFAULT_HWM);
+	zmq_ctx = zctx_new ();
+	req_socket = zmq_socket_create(zmq_ctx, req_server, ZMQ_REQ, DEFAULT_LINGER, DEFAULT_HWM);
 	if(req_socket == NULL) {
 		errorLog("NULL socket opened on %s", req_server);
-		zmq_term(zmq_ctx);
+		zctx_destroy(&zmq_ctx);
 		exit(1);
 	}
-	sub_socket = zmq_connect_socket(zmq_ctx, sub_server, ZMQ_SUB, DEFAULT_LINGER, DEFAULT_HWM);
+	sub_socket = zmq_socket_create(zmq_ctx, sub_server, ZMQ_SUB, DEFAULT_LINGER, DEFAULT_HWM);
 	if(sub_socket == NULL) {
 		errorLog("NULL socket opened on %s", sub_server);
-		zmq_close(req_socket);
-		zmq_term(zmq_ctx);
+		zsocket_destroy(zmq_ctx, req_socket);
+		zctx_destroy(&zmq_ctx);
 		exit(1);
 	}
 
-	s_send(req_socket, "PING");
-	char *msg = s_recv(req_socket);
+	zstr_send (req_socket, "PING");
+	char *msg = zstr_recv (req_socket);
 	debugLog("REQ socket answer: %s", msg);
 	free(msg);
 
 
 	/*  Main listener loop */
-	while(1) {
-		char *message = s_recv(sub_socket);
+	while(!zctx_interrupted) {
+		char *message = zstr_recv (sub_socket);
 		debugLog("received == %s", message);
-		free(message);
+		if(message)
+			free(message);
 	}
 
-	zmq_close(sub_socket);
-	zmq_close(req_socket);
-	zmq_term(zmq_ctx);
+	zsocket_destroy (zmq_ctx, sub_socket);
+	zsocket_destroy (zmq_ctx, req_socket);
+	zctx_destroy (&zmq_ctx);
 
 	lsd_destroy(lsd_handle);
+
 	exit(0);
 }
