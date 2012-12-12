@@ -66,11 +66,6 @@ static void help(void)
 static int handle_cmdline(int argc, char** argv) {
 	int flags = 0;
 
-	int i;
-	for(i=0; i<argc;i++) {
-		debugLog("param #%d = %s", i, argv[i]);
-	}
-
 	while (1+flags < argc && argv[1+flags][0] == '-') {
 		switch (argv[1+flags][1]) {
 			case 'r': 
@@ -147,7 +142,46 @@ static void callback (lsd_handle_t* handle,
 	debugLog("Event %d, node %s, len %d", event, node, (int)len);
 }
 
+//  ---------------------------------------------------------------------
+//  Small parser for config keys
+static int parse_config_val(const char *str, char *key, char *value)
+{
+	int i;
+	char buf[MAX_STRING_LEN];
 
+	memset(buf,0,MAX_STRING_LEN);
+	memset(key,0,MAX_STRING_LEN);
+	memset(value,0,MAX_STRING_LEN);
+
+	strncpy(buf,str,MAX_STRING_LEN);
+	for(i=0;i<MAX_STRING_LEN;i++) {
+		if (buf[i] == '=') {
+			buf[i] = ' ';
+			break;
+		}
+	}
+
+	if (sscanf(buf, "%s %s", key, value) == 2) 
+		return 1;
+
+	return 0;
+}
+
+//  ---------------------------------------------------------------------
+//  Small parser for config keys
+static void persist_value(redisContext *ctx, char *str) 
+{
+
+	char cmd[MAX_STRING_LEN];
+	char key[MAX_STRING_LEN];
+	char value[MAX_STRING_LEN];
+
+	int ret = parse_config_val(str, key, value);
+	if(ret == 1) {
+		snprintf(cmd,MAX_STRING_LEN,"SET %s %s",key,value);
+		redisCommand(ctx,cmd);
+	}
+}
 
 //  ---------------------------------------------------------------------
 //  Main loop
@@ -189,7 +223,7 @@ int main(int argc, char *argv[])
 		errorLog("lsd connection error");
 		exit(1);
 	}
-	lsd_join(lsd_handle, LSD_CONFIG_GROUP);
+	lsd_join(lsd_handle, LSD_GROUP_CONFIG);
 
 	/*  Init ZMQ */
 	zmq_ctx = zctx_new ();
@@ -207,24 +241,29 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	/* Kept here for further reference 
 	zstr_send (req_socket, "PING");
 	char *msg = zstr_recv (req_socket);
 	debugLog("REQ socket answer: %s", msg);
 	free(msg);
-
+	*/ 
 
 	/*  Main listener loop */
 	while(!zctx_interrupted) {
 		char *message = zstr_recv (sub_socket);
-		debugLog("received == %s", message);
-		if(message)
+		debugLog("Received '%s', sending to LSD and REDIS", message);
+		if(message) {
+			lsd_shout(lsd_handle, LSD_GROUP_CONFIG, (const uint8_t*)message, strlen(message));
+			persist_value(redis_ctx, message);
 			free(message);
+		}
 	}
 
 	zsocket_destroy (zmq_ctx, sub_socket);
 	zsocket_destroy (zmq_ctx, req_socket);
 	zctx_destroy (&zmq_ctx);
 
+	lsd_leave(lsd_handle, LSD_GROUP_CONFIG);
 	lsd_destroy(lsd_handle);
 
 	exit(0);

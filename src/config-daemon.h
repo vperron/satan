@@ -23,6 +23,16 @@
 #ifndef _CONFIG_DAEMON_H_
 #define _CONFIG_DAEMON_H_
 
-#define LSD_CONFIG_GROUP "X-CONFIG"
+// ------------------------------------------------------
+// X-CONFIG group 
+//
+// In this group, we receive messages formatted as:
+//     KEY=VALUE
+// where the KEYS are defined below.
+// They SHOULD follow a redis-friendly nomenclature. 
+
+#define LSD_GROUP_CONFIG "X-CONFIG"
+
+#define XCONFKEY_DATA_SERVER "xconfig:datastream_server"
 
 #endif 
