@@ -29,16 +29,10 @@
 
 #include "main.h"
 #include "lsd.h"
-#include "hiredis/hiredis.h"
 #include "config-daemon.h"
 
 
 /*** DEFINES ***/
-
-#define REDIS_HOST "127.0.0.1"
-#define REDIS_PORT 6379
-#define REDIS_TIMEOUT 2 // secs
-
 
 #define DEFAULT_LINGER 0
 #define DEFAULT_HWM 2
@@ -169,7 +163,7 @@ static int parse_config_val(const char *str, char *key, char *value)
 
 //  ---------------------------------------------------------------------
 //  Small parser for config keys
-static void persist_value(redisContext *ctx, char *str) 
+static void persist_value(void* ctx, char *str) 
 {
 
 	char cmd[MAX_STRING_LEN];
@@ -179,7 +173,6 @@ static void persist_value(redisContext *ctx, char *str)
 	int ret = parse_config_val(str, key, value);
 	if(ret == 1) {
 		snprintf(cmd,MAX_STRING_LEN,"SET %s %s",key,value);
-		redisCommand(ctx,cmd);
 	}
 }
 
@@ -188,11 +181,7 @@ static void persist_value(redisContext *ctx, char *str)
 int main(int argc, char *argv[])
 {
 
-	redisContext *redis_ctx;
-	redisReply *redis_reply;
 	lsd_handle_t* lsd_handle;
-
-	struct timeval timeout = { REDIS_TIMEOUT , 0 }; // 2 seconds
 
 	memset(req_server,0,sizeof req_server);
 	memset(sub_server,0,sizeof sub_server);
@@ -204,18 +193,6 @@ int main(int argc, char *argv[])
 		help();
 		exit(1);
 	}
-
-
-	/*  Init redis connection */
-	redis_ctx = redisConnectWithTimeout((char*)REDIS_HOST, REDIS_PORT, timeout);
-	if (redis_ctx->err) {
-		errorLog("Connection error to %s : %s", REDIS_HOST, redis_ctx->errstr);
-		exit(1);
-	}
-
-	redis_reply = redisCommand(redis_ctx,"PING");
-	debugLog("PING: %s", redis_reply->str);
-	freeReplyObject(redis_reply);
 
 	/*  Init lsd  */
 	lsd_handle = lsd_init(callback, NULL);
@@ -251,10 +228,9 @@ int main(int argc, char *argv[])
 	/*  Main listener loop */
 	while(!zctx_interrupted) {
 		char *message = zstr_recv (sub_socket);
-		debugLog("Received '%s', sending to LSD and REDIS", message);
+		debugLog("Received '%s', sending to LSD", message);
 		if(message) {
 			lsd_shout(lsd_handle, LSD_GROUP_CONFIG, (const uint8_t*)message, strlen(message));
-			persist_value(redis_ctx, message);
 			free(message);
 		}
 	}
