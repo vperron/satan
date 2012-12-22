@@ -1,0 +1,7 @@
+config section 'subscribe'
+	option endpoint 'tcp://192.168.1.15:10079'
+	option linger '0'
+	option hwm '2'
+
+config section 'lsd'
+	option group 'xconfig'

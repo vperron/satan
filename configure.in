@@ -6,7 +6,7 @@ AC_PREREQ(2.61)
 # The version in git should reflect the *next* version planned.
 # Version must be MAJOR.MINOR.PATCH otherwise things will break.
 #
-AC_INIT([config-daemon],[0.0.1],[victor@iso3103.net])
+AC_INIT([satan],[0.0.1],[victor@iso3103.net])
 
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR(config)
@@ -82,47 +82,47 @@ case "${host_os}" in
     *linux*)
         # Define on Linux to enable all library features
         CFLAGS="-D_GNU_SOURCE -DLINUX $CFLAGS"
-        AC_DEFINE(CONFDAEMON_HAVE_LINUX, 1, [Have Linux OS])
+        AC_DEFINE(SATAN_HAVE_LINUX, 1, [Have Linux OS])
         ;;
     *solaris*)
         # Define on Solaris to enable all library features
         CFLAGS="-D_PTHREADS $CFLAGS"
-        AC_DEFINE(CONFDAEMON_HAVE_SOLARIS, 1, [Have Solaris OS])
+        AC_DEFINE(SATAN_HAVE_SOLARIS, 1, [Have Solaris OS])
         ;;
     *freebsd*)
         # Define on FreeBSD to enable all library features
         CFLAGS="-D__BSD_VISIBLE $CFLAGS"
-        AC_DEFINE(CONFDAEMON_HAVE_FREEBSD, 1, [Have FreeBSD OS])
+        AC_DEFINE(SATAN_HAVE_FREEBSD, 1, [Have FreeBSD OS])
         ;;
     *darwin*)
         # Define on Darwin to enable all library features
         CFLAGS="-D_DARWIN_C_SOURCE $CFLAGS"
-        AC_DEFINE(CONFDAEMON_HAVE_OSX, 1, [Have DarwinOSX OS])
+        AC_DEFINE(SATAN_HAVE_OSX, 1, [Have DarwinOSX OS])
         ;;
     *netbsd*)
         # Define on NetBSD to enable all library features
         CFLAGS="-D_NETBSD_SOURCE $CFLAGS"
-        AC_DEFINE(CONFDAEMON_HAVE_NETBSD, 1, [Have NetBSD OS])
+        AC_DEFINE(SATAN_HAVE_NETBSD, 1, [Have NetBSD OS])
         ;;
     *openbsd*)
         # Define on OpenBSD to enable all library features
         CFLAGS="-D_BSD_SOURCE $CFLAGS"
-        AC_DEFINE(CONFDAEMON_HAVE_OPENBSD, 1, [Have OpenBSD OS])
+        AC_DEFINE(SATAN_HAVE_OPENBSD, 1, [Have OpenBSD OS])
         ;;
     *nto-qnx*)
-        AC_DEFINE(CONFDAEMON_HAVE_QNXNTO, 1, [Have QNX Neutrino OS])
+        AC_DEFINE(SATAN_HAVE_QNXNTO, 1, [Have QNX Neutrino OS])
         ;;
     *aix*)
-        AC_DEFINE(CONFDAEMON_HAVE_AIX, 1, [Have AIX OS])
+        AC_DEFINE(SATAN_HAVE_AIX, 1, [Have AIX OS])
         ;;
     *hpux*)
         # Define on HP-UX to enable all library features
         CFLAGS="-D_POSIX_C_SOURCE=200112L"
-        AC_DEFINE(CONFDAEMON_HAVE_HPUX, 1, [Have HPUX OS])
+        AC_DEFINE(SATAN_HAVE_HPUX, 1, [Have HPUX OS])
         ;;
     *mingw32*)
-        AC_DEFINE(CONFDAEMON_HAVE_WINDOWS, 1, [Have Windows OS])
-        AC_DEFINE(CONFDAEMON_HAVE_MINGW32, 1, [Have MinGW32])
+        AC_DEFINE(SATAN_HAVE_WINDOWS, 1, [Have Windows OS])
+        AC_DEFINE(SATAN_HAVE_MINGW32, 1, [Have MinGW32])
         AC_CHECK_HEADERS(windows.h)
         lsd_on_mingw32="yes"
         lsd_install_man="no"
@@ -130,7 +130,7 @@ case "${host_os}" in
     *cygwin*)
         # Define on Cygwin to enable all library features
         CFLAGS="-D_GNU_SOURCE $CFLAGS"
-        AC_DEFINE(CONFDAEMON_HAVE_CYGWIN, 1, [Have Cygwin])
+        AC_DEFINE(SATAN_HAVE_CYGWIN, 1, [Have Cygwin])
         ;;
     *)
         AC_MSG_ERROR([unsupported system: ${host_os}.])

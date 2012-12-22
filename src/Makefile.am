@@ -1,7 +1,7 @@
 
 INCLUDES = -Wall -g -ggdb -O2 -DDEBUG $(zeromq_CFLAGS) -Iinclude
 
-bin_PROGRAMS = config-daemon
+bin_PROGRAMS = satan
 
-config_daemon_SOURCES = main.c 
-config_daemon_LDADD =  
+satan_SOURCES = main.c config.c zeromq.c
+satan_LDADD =  

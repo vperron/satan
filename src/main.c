@@ -29,103 +29,68 @@
 
 #include "main.h"
 #include "lsd.h"
-#include "config-daemon.h"
+#include "config.h"
+#include "zeromq.h"
 
 
 /*** DEFINES ***/
 
-#define DEFAULT_LINGER 0
-#define DEFAULT_HWM 2
+#define SATAN_IDENTITY "satan"
+
+#define CONF_SUBSCRIBE_ENDPOINT   "satan.subscribe.endpoint"
+#define CONF_SUBSCRIBE_HWM        "satan.subscribe.hwm"
+#define CONF_SUBSCRIBE_LINGER     "satan.subscribe.linger"
+#define CONF_LSD_GROUP            "satan.lsd.group"
 
 
-/*** GLOBAL VARIABLES ***/
-zctx_t *zmq_ctx    = NULL; 
-void *req_socket = NULL;
-void *sub_socket = NULL;
+typedef struct _mainloop_args_t {
+	void *socket;
+	char *endpoint;
+	int hwm;
+	int linger;
 
-char req_server[MAX_STRING_LEN];  // Config server
-char sub_server[MAX_STRING_LEN];    // Configuration file 
+	config_context* cfg_ctx;
+	lsd_handle_t* lsd_handle;
+	char* lsdgroup;
+} mainloop_args_t;
 
 
-/*** STATIC FUNCTIONS ***/
-static void help(void) __attribute__ ((noreturn));
-static int handle_cmdline(int argc, char** argv);
-
-static void help(void)
+static void s_help(void)
 {
-	errorLog("Usage: config-daemon < -r REQ_SERVER > < -s SUB_SERVER >\n");
+	errorLog("Usage: satan [-e SUB_ENDPOINT]\n");
 	exit(1);
 }
 
-static int handle_cmdline(int argc, char** argv) {
+static void s_handle_cmdline(mainloop_args_t* args, int argc, char** argv) {
 	int flags = 0;
 
 	while (1+flags < argc && argv[1+flags][0] == '-') {
 		switch (argv[1+flags][1]) {
-			case 'r': 
+			case 'e': 
 				if(flags+2<argc) {
 					flags++;
-					strncpy(req_server,argv[1+flags],MAX_STRING_LEN);
-					debugLog("reqserver %s", req_server);
+					args->endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
 				} else {
-					errorLog("Error: Please specify a valid REQ server endpoint !");
-				}
-				break;
-			case 's': 
-				if(flags+2<argc) {
-					flags++;
-					strncpy(sub_server,argv[1+flags],MAX_STRING_LEN);
-					debugLog("subserver %s", sub_server);
-				} else {
-					errorLog("Error: Please specify a valid SUB server endpoint !");
+					errorLog("Error: Please specify a valid endpoint !");
 				}
 				break;
 			case 'h': 
-				help();
+				s_help();
 				break;
 			default:
 				errorLog("Error: Unsupported option '%s' !", argv[1+flags]);
-				help();
+				s_help();
 				exit(1);
 		}
 		flags++;
 	}
 
 	if (argc < flags + 1)
-		help();
+		s_help();
 
-	return flags;
 }
 
-
-//  ---------------------------------------------------------------------
-//  Create socket
-static void *zmq_socket_create (zctx_t *context, char* endpoint, int type, int linger, int hwm) {
-
-	void* socket = NULL;
-
-	assert(context);
-	assert(endpoint);
-		
-	if(endpoint[0] == 0) {
-		errorLog("Trying to open NULL output socket !");
-		return NULL;
-	}
-
-	socket = zsocket_new (context, type);
-	zsocket_set_sndhwm (socket, hwm);
-	zsocket_set_rcvhwm (socket, hwm);
-	zsocket_set_linger (socket, linger);
-	if(type == ZMQ_SUB)
-		zsocket_set_subscribe (socket, "");
-	zsocket_connect (socket, "%s", endpoint);
-	debugLog("Connected to zmq endpoint : %s",endpoint);
-	return socket;
-}
-
-//  ---------------------------------------------------------------------
-//  Callback for LSD
-static void callback (lsd_handle_t* handle,
+static void s_lsd_callback (lsd_handle_t* handle,
 			int event,
 			const char *node,
 			const char *group, 
@@ -136,16 +101,12 @@ static void callback (lsd_handle_t* handle,
 	debugLog("Event %d, node %s, len %d", event, node, (int)len);
 }
 
-//  ---------------------------------------------------------------------
-//  Small parser for config keys
-static int parse_config_val(const char *str, char *key, char *value)
+static int s_parse_config_val(const char *str, char *key, char *value)
 {
 	int i;
 	char buf[MAX_STRING_LEN];
 
 	memset(buf,0,MAX_STRING_LEN);
-	memset(key,0,MAX_STRING_LEN);
-	memset(value,0,MAX_STRING_LEN);
 
 	strncpy(buf,str,MAX_STRING_LEN);
 	for(i=0;i<MAX_STRING_LEN;i++) {
@@ -156,68 +117,96 @@ static int parse_config_val(const char *str, char *key, char *value)
 	}
 
 	if (sscanf(buf, "%s %s", key, value) == 2) 
-		return 1;
+		return true;
 
-	return 0;
+	return false;
 }
 
-//  ---------------------------------------------------------------------
-//  Small parser for config keys
-static void persist_value(void* ctx, char *str) 
+static int s_parse_key(const char *key, char *pkg, char *section, char* prop)
 {
+	int i;
+	char buf[MAX_STRING_LEN];
+	memset(buf,0,MAX_STRING_LEN);
 
-	char cmd[MAX_STRING_LEN];
-	char key[MAX_STRING_LEN];
-	char value[MAX_STRING_LEN];
-
-	int ret = parse_config_val(str, key, value);
-	if(ret == 1) {
-		snprintf(cmd,MAX_STRING_LEN,"SET %s %s",key,value);
+	strncpy(buf,key,MAX_STRING_LEN);
+	for(i=0;i<MAX_STRING_LEN;i++) {
+		if (buf[i] == '.') 	buf[i] = ' ';
+		if (buf[i] == '\0') break;
 	}
+
+	if (sscanf(buf, "%s %s %s", pkg, section, prop) == 3) 
+		return true;
+
+	return false;
 }
 
-//  ---------------------------------------------------------------------
-//  Main loop
+static void s_start_daemon(char* pkg)
+{
+	int sig = SIGCHLD;
+	char path[MAX_STRING_LEN];
+  pid_t process_id = fork();
+  if (!process_id) {
+		snprintf(path,MAX_STRING_LEN,"/etc/init.d/%s", pkg);
+		execl(path,path,"start",NULL);
+		exit(0);
+	}
+
+	if(process_id>0) wait(&sig);
+}
+
+static void s_stop_daemon(char* pkg)
+{
+	int sig = SIGCHLD;
+	char path[MAX_STRING_LEN];
+  pid_t process_id = fork();
+  if (!process_id) {
+		snprintf(path,MAX_STRING_LEN,"/etc/init.d/%s", pkg);
+		execl(path,path,"stop",NULL);
+		exit(0);
+	}
+	if(process_id>0) wait(&sig);
+}
+
+static void s_apply_config(mainloop_args_t* args, const char* key, const char* value) 
+{
+	char str[MAX_STRING_LEN];
+	char pkg[MAX_STRING_LEN], section[MAX_STRING_LEN], prop[MAX_STRING_LEN];
+	/*  Determine if it's an UCI config */
+	if(s_parse_key(key, pkg, section, prop)) {
+		snprintf(str,MAX_STRING_LEN,"%s=%s",key,value);
+		config_set(args->cfg_ctx,str);
+		config_commit(args->cfg_ctx,pkg);
+		s_stop_daemon(pkg);
+		s_start_daemon(pkg);
+	}
+	/*  TODO: package install feature */
+}
+
+
 int main(int argc, char *argv[])
 {
+	char key[MAX_STRING_LEN], value[MAX_STRING_LEN];
+	mainloop_args_t args;
 
-	lsd_handle_t* lsd_handle;
+	memset(&args,0,sizeof(args));
 
-	memset(req_server,0,sizeof req_server);
-	memset(sub_server,0,sizeof sub_server);
+	args.cfg_ctx = config_new();
 
-	handle_cmdline(argc, argv);
+	config_get_str(args.cfg_ctx,CONF_SUBSCRIBE_ENDPOINT,&args.endpoint);
+	config_get_str(args.cfg_ctx,CONF_LSD_GROUP,&args.lsdgroup);
+	args.hwm = config_get_int(args.cfg_ctx, CONF_SUBSCRIBE_HWM);
+	args.linger = config_get_int(args.cfg_ctx, CONF_SUBSCRIBE_LINGER);
+	
+	s_handle_cmdline(&args, argc, argv);
 
-	if(req_server[0] == 0 || sub_server[0] == 0) {
-		errorLog("req_server and psub_server parameters are mandatory !");
-		help();
-		exit(1);
-	}
+	args.lsd_handle = lsd_init(s_lsd_callback, NULL);
+	assert(args.lsd_handle != NULL);
+	lsd_join(args.lsd_handle, args.lsdgroup);
 
-	/*  Init lsd  */
-	lsd_handle = lsd_init(callback, NULL);
-	if(lsd_handle == NULL) {
-		errorLog("lsd connection error");
-		exit(1);
-	}
-	lsd_join(lsd_handle, LSD_GROUP_CONFIG);
-
-	/*  Init ZMQ */
-	zmq_ctx = zctx_new ();
-	req_socket = zmq_socket_create(zmq_ctx, req_server, ZMQ_REQ, DEFAULT_LINGER, DEFAULT_HWM);
-	if(req_socket == NULL) {
-		errorLog("NULL socket opened on %s", req_server);
-		zctx_destroy(&zmq_ctx);
-		exit(1);
-	}
-	sub_socket = zmq_socket_create(zmq_ctx, sub_server, ZMQ_SUB, DEFAULT_LINGER, DEFAULT_HWM);
-	if(sub_socket == NULL) {
-		errorLog("NULL socket opened on %s", sub_server);
-		zsocket_destroy(zmq_ctx, req_socket);
-		zctx_destroy(&zmq_ctx);
-		exit(1);
-	}
-
+	zctx_t *zmq_ctx = zctx_new ();
+	args.socket = zeromq_create_socket(zmq_ctx, args.endpoint, ZMQ_SUB, args.linger, args.hwm);
+	assert(args.socket != NULL);
+	
 	/* Kept here for further reference 
 	zstr_send (req_socket, "PING");
 	char *msg = zstr_recv (req_socket);
@@ -227,20 +216,21 @@ int main(int argc, char *argv[])
 
 	/*  Main listener loop */
 	while(!zctx_interrupted) {
-		char *message = zstr_recv (sub_socket);
-		debugLog("Received '%s', sending to LSD", message);
+		char *message = zstr_recv (args.socket);
+		debugLog("received '%s' from update server.", message);
 		if(message) {
-			lsd_shout(lsd_handle, LSD_GROUP_CONFIG, (const uint8_t*)message, strlen(message));
+			lsd_shout(args.lsd_handle, args.lsdgroup, (const uint8_t*)message, strlen(message));
+			if(s_parse_config_val(message, key, value))
+					s_apply_config(&args, key, value);
 			free(message);
 		}
 	}
 
-	zsocket_destroy (zmq_ctx, sub_socket);
-	zsocket_destroy (zmq_ctx, req_socket);
+	zsocket_destroy (zmq_ctx, args.socket);
+	lsd_leave(args.lsd_handle, args.lsdgroup);
+	lsd_destroy(args.lsd_handle);
 	zctx_destroy (&zmq_ctx);
-
-	lsd_leave(lsd_handle, LSD_GROUP_CONFIG);
-	lsd_destroy(lsd_handle);
+	config_destroy(args.cfg_ctx);
 
 	exit(0);
 }
