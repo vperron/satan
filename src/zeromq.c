@@ -38,6 +38,7 @@ void zeromq_send_data(void* socket, char *identity, u_int8_t* data, int size) {
 void *zeromq_create_socket (zctx_t *context, char* endpoint, int type, int linger, int hwm) {
 
 	void* socket = NULL;
+	char _endp[MAX_STRING_LEN];
 
 	assert(context);
 	assert(endpoint);
@@ -53,7 +54,8 @@ void *zeromq_create_socket (zctx_t *context, char* endpoint, int type, int linge
 	zsocket_set_linger (socket, linger);
 	if(type == ZMQ_SUB)
 		zsocket_set_subscribe (socket, "");
-	zsocket_connect (socket, "%s", endpoint);
-	debugLog("Connected to zmq endpoint : %s",endpoint);
+	strncpy(_endp, endpoint, MAX_STRING_LEN);
+	zsocket_connect (socket, "%s", _endp);
+	debugLog("Connected to zmq endpoint : %s",_endp);
 	return socket;
 }

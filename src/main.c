@@ -144,13 +144,15 @@ static void s_start_daemon(char* pkg)
 {
 	int sig = SIGCHLD;
 	char path[MAX_STRING_LEN];
-  pid_t process_id = fork();
+	char *argv[] = { NULL, "start", NULL };
+	char *env[] = { NULL };
+  pid_t process_id = vfork();
   if (!process_id) {
 		snprintf(path,MAX_STRING_LEN,"/etc/init.d/%s", pkg);
-		execl(path,path,"start",NULL);
+		argv[0] = path;
+		execve(path,argv, env);
 		exit(0);
 	}
-
 	if(process_id>0) wait(&sig);
 }
 
@@ -158,10 +160,13 @@ static void s_stop_daemon(char* pkg)
 {
 	int sig = SIGCHLD;
 	char path[MAX_STRING_LEN];
-  pid_t process_id = fork();
+	char *argv[] = { NULL, "stop", NULL };
+	char *env[] = { NULL };
+  pid_t process_id = vfork();
   if (!process_id) {
 		snprintf(path,MAX_STRING_LEN,"/etc/init.d/%s", pkg);
-		execl(path,path,"stop",NULL);
+		argv[0] = path;
+		execve(path,argv, env);
 		exit(0);
 	}
 	if(process_id>0) wait(&sig);
@@ -185,6 +190,7 @@ static void s_apply_config(mainloop_args_t* args, const char* key, const char* v
 
 int main(int argc, char *argv[])
 {
+	char _msg[MAX_STRING_LEN];
 	char key[MAX_STRING_LEN], value[MAX_STRING_LEN];
 	mainloop_args_t* args = malloc(sizeof(mainloop_args_t));
 
@@ -199,26 +205,27 @@ int main(int argc, char *argv[])
 	
 	s_handle_cmdline(args, argc, argv);
 
-	args->lsd_handle = lsd_init(s_lsd_callback, NULL);
-	assert(args->lsd_handle != NULL);
-	lsd_join(args->lsd_handle, args->lsdgroup);
-
 	zctx_t *zmq_ctx = zctx_new ();
 	args->socket = zeromq_create_socket(zmq_ctx, args->endpoint, ZMQ_REP, args->linger, args->hwm);
 	assert(args->socket != NULL);
-	
+
+	args->lsd_handle = lsd_init(zmq_ctx, s_lsd_callback, NULL);
+	assert(args->lsd_handle != NULL);
+	lsd_join(args->lsd_handle, args->lsdgroup);
+
 	/*  Main listener loop */
 	while(!zctx_interrupted) {
 		char *message = zstr_recv (args->socket);
 		debugLog("received '%s' from REQ server.", message);
 		zstr_send (args->socket, "ACK");
 		if(message) {
-			lsd_shout(args->lsd_handle, args->lsdgroup, (const uint8_t*)message, strlen(message));
-			if(s_parse_config_val(message, key, value)) {
+			strncpy(_msg, message, MAX_STRING_LEN);
+			free(message);
+			lsd_shout(args->lsd_handle, args->lsdgroup, (const uint8_t*)_msg, strlen(_msg));
+			if(s_parse_config_val(_msg, key, value)) {
 				s_apply_config(args, key, value);
 			}
-			free(message);
-		}
+		} 
 	}
 
 	zsocket_destroy (zmq_ctx, args->socket);
