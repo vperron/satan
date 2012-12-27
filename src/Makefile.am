@@ -1,5 +1,5 @@
 
-INCLUDES = -Wall -g -ggdb -O2 -DDEBUG $(zeromq_CFLAGS) -Iinclude
+INCLUDES = -Wall -Werror -g -ggdb -O2 -DDEBUG $(zeromq_CFLAGS) -Iinclude
 
 bin_PROGRAMS = satan
 

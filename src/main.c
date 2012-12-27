@@ -186,51 +186,47 @@ static void s_apply_config(mainloop_args_t* args, const char* key, const char* v
 int main(int argc, char *argv[])
 {
 	char key[MAX_STRING_LEN], value[MAX_STRING_LEN];
-	mainloop_args_t args;
+	mainloop_args_t* args = malloc(sizeof(mainloop_args_t));
 
-	memset(&args,0,sizeof(args));
+	memset(args,0,sizeof(args));
 
-	args.cfg_ctx = config_new();
+	args->cfg_ctx = config_new();
 
-	config_get_str(args.cfg_ctx,CONF_SUBSCRIBE_ENDPOINT,&args.endpoint);
-	config_get_str(args.cfg_ctx,CONF_LSD_GROUP,&args.lsdgroup);
-	args.hwm = config_get_int(args.cfg_ctx, CONF_SUBSCRIBE_HWM);
-	args.linger = config_get_int(args.cfg_ctx, CONF_SUBSCRIBE_LINGER);
+	config_get_str(args->cfg_ctx,CONF_SUBSCRIBE_ENDPOINT,&args->endpoint);
+	config_get_str(args->cfg_ctx,CONF_LSD_GROUP,&args->lsdgroup);
+	args->hwm = config_get_int(args->cfg_ctx, CONF_SUBSCRIBE_HWM);
+	args->linger = config_get_int(args->cfg_ctx, CONF_SUBSCRIBE_LINGER);
 	
-	s_handle_cmdline(&args, argc, argv);
+	s_handle_cmdline(args, argc, argv);
 
-	args.lsd_handle = lsd_init(s_lsd_callback, NULL);
-	assert(args.lsd_handle != NULL);
-	lsd_join(args.lsd_handle, args.lsdgroup);
+	args->lsd_handle = lsd_init(s_lsd_callback, NULL);
+	assert(args->lsd_handle != NULL);
+	lsd_join(args->lsd_handle, args->lsdgroup);
 
 	zctx_t *zmq_ctx = zctx_new ();
-	args.socket = zeromq_create_socket(zmq_ctx, args.endpoint, ZMQ_SUB, args.linger, args.hwm);
-	assert(args.socket != NULL);
+	args->socket = zeromq_create_socket(zmq_ctx, args->endpoint, ZMQ_REP, args->linger, args->hwm);
+	assert(args->socket != NULL);
 	
-	/* Kept here for further reference 
-	zstr_send (req_socket, "PING");
-	char *msg = zstr_recv (req_socket);
-	debugLog("REQ socket answer: %s", msg);
-	free(msg);
-	*/ 
-
 	/*  Main listener loop */
 	while(!zctx_interrupted) {
-		char *message = zstr_recv (args.socket);
-		debugLog("received '%s' from update server.", message);
+		char *message = zstr_recv (args->socket);
+		debugLog("received '%s' from REQ server.", message);
+		zstr_send (args->socket, "ACK");
 		if(message) {
-			lsd_shout(args.lsd_handle, args.lsdgroup, (const uint8_t*)message, strlen(message));
-			if(s_parse_config_val(message, key, value))
-					s_apply_config(&args, key, value);
+			lsd_shout(args->lsd_handle, args->lsdgroup, (const uint8_t*)message, strlen(message));
+			if(s_parse_config_val(message, key, value)) {
+				s_apply_config(args, key, value);
+			}
 			free(message);
 		}
 	}
 
-	zsocket_destroy (zmq_ctx, args.socket);
-	lsd_leave(args.lsd_handle, args.lsdgroup);
-	lsd_destroy(args.lsd_handle);
+	zsocket_destroy (zmq_ctx, args->socket);
+	lsd_leave(args->lsd_handle, args->lsdgroup);
+	lsd_destroy(args->lsd_handle);
 	zctx_destroy (&zmq_ctx);
-	config_destroy(args.cfg_ctx);
+	config_destroy(args->cfg_ctx);
+	free(args);
 
 	exit(0);
 }
