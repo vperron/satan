@@ -2,11 +2,11 @@
  * =====================================================================================
  *
  *   @file main.c
- *   @author Victor Perron (), victor@iso3103.net
+ *   @author Victor Perron (), victor.perron@locarise.com
  *   
  *        Version:  1.0
  *        Created:  10/21/2012 07:49:49 PM
- *        Company:  iso3103 Labs
+ *        Company:  Locarise
  *
  *   @section DESCRIPTION
  *
@@ -28,7 +28,6 @@
 #include <czmq.h>
 
 #include "main.h"
-#include "lsd.h"
 #include "config.h"
 #include "zeromq.h"
 
@@ -40,19 +39,19 @@
 #define CONF_SUBSCRIBE_ENDPOINT   "satan.subscribe.endpoint"
 #define CONF_SUBSCRIBE_HWM        "satan.subscribe.hwm"
 #define CONF_SUBSCRIBE_LINGER     "satan.subscribe.linger"
-#define CONF_LSD_GROUP            "satan.lsd.group"
 
+#define CONF_GLOBAL_MODE            "locarise.device.mode"
+#define CONF_GLOBAL_UUID            "locarise.device.uuid"
+#define CONF_GLOBAL_APIKEY          "locarise.device.apikey"
 
-typedef struct _mainloop_args_t {
+typedef struct _satan_args_t {
 	void *socket;
 	char *endpoint;
 	int hwm;
 	int linger;
 
 	config_context* cfg_ctx;
-	lsd_handle_t* lsd_handle;
-	char* lsdgroup;
-} mainloop_args_t;
+} satan_args_t;
 
 
 static void s_help(void)
@@ -61,7 +60,7 @@ static void s_help(void)
 	exit(1);
 }
 
-static void s_handle_cmdline(mainloop_args_t* args, int argc, char** argv) {
+static void s_handle_cmdline(satan_args_t* args, int argc, char** argv) {
 	int flags = 0;
 
 	while (1+flags < argc && argv[1+flags][0] == '-') {
@@ -172,7 +171,7 @@ static void s_stop_daemon(char* pkg)
 	if(process_id>0) wait(&sig);
 }
 
-static void s_apply_config(mainloop_args_t* args, const char* key, const char* value) 
+static void s_apply_config(satan_args_t* args, const char* key, const char* value) 
 {
 	char str[MAX_STRING_LEN];
 	char pkg[MAX_STRING_LEN], section[MAX_STRING_LEN], prop[MAX_STRING_LEN];
@@ -192,14 +191,13 @@ int main(int argc, char *argv[])
 {
 	char _msg[MAX_STRING_LEN];
 	char key[MAX_STRING_LEN], value[MAX_STRING_LEN];
-	mainloop_args_t* args = malloc(sizeof(mainloop_args_t));
+	satan_args_t* args = malloc(sizeof(satan_args_t));
 
 	memset(args,0,sizeof(args));
 
 	args->cfg_ctx = config_new();
 
 	config_get_str(args->cfg_ctx,CONF_SUBSCRIBE_ENDPOINT,&args->endpoint);
-	config_get_str(args->cfg_ctx,CONF_LSD_GROUP,&args->lsdgroup);
 	args->hwm = config_get_int(args->cfg_ctx, CONF_SUBSCRIBE_HWM);
 	args->linger = config_get_int(args->cfg_ctx, CONF_SUBSCRIBE_LINGER);
 	
@@ -209,10 +207,6 @@ int main(int argc, char *argv[])
 	args->socket = zeromq_create_socket(zmq_ctx, args->endpoint, ZMQ_REP, args->linger, args->hwm);
 	assert(args->socket != NULL);
 
-	args->lsd_handle = lsd_init(zmq_ctx, s_lsd_callback, NULL);
-	assert(args->lsd_handle != NULL);
-	lsd_join(args->lsd_handle, args->lsdgroup);
-
 	/*  Main listener loop */
 	while(!zctx_interrupted) {
 		char *message = zstr_recv (args->socket);
@@ -221,7 +215,6 @@ int main(int argc, char *argv[])
 		if(message) {
 			strncpy(_msg, message, MAX_STRING_LEN);
 			free(message);
-			lsd_shout(args->lsd_handle, args->lsdgroup, (const uint8_t*)_msg, strlen(_msg));
 			if(s_parse_config_val(_msg, key, value)) {
 				s_apply_config(args, key, value);
 			}

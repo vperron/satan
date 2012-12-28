@@ -2,11 +2,11 @@
  * =====================================================================================
  *
  *   @file zeromq.h
- *   @author Victor Perron (), victor@iso3103.net
+ *   @author Victor Perron (), victor.perron@locarise.com
  *   
  *        Version:  1.0
  *        Created:  12/12/2012 06:28:05 PM
- *        Company:  iso3103 Labs
+ *        Company:  Locarise
  *
  *   @section DESCRIPTION
  *

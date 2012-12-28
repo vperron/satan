@@ -2,11 +2,11 @@
  * =====================================================================================
  *
  *   @file uci.c
- *   @author Victor Perron (), victor@iso3103.net
+ *   @author Victor Perron (), victor.perron@locarise.com
  *   
  *        Version:  1.0
  *        Created:  12/19/2012 05:42:27 PM
- *        Company:  iso3103 Labs
+ *        Company:  Locarise
  *
  *   @section DESCRIPTION
  *

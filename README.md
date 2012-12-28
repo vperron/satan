@@ -1,20 +1,105 @@
 # satan
 
-satan is the daemon responsible of configuration updates and remote upgrade of the boxes.
+*satan* is the daemon responsible of configuration updates and remote upgrade of the boxes.
 Needless to say, that particular piece of software has to be particularly stable.
 It has life and death rights over [grideye](https://github.com/vperron/grideye) and [snow](https://github.com/vperron/snow) daemons, and can also trigger a full firmware update.
 
 It receives its configuration via an always-connected, dynamic and NAT-traversing zeromq connection to Locarise servers.
-Moreover, satan makes use of the [LSD](https://github.com/vperron/lsd) library to make all its unconnected minions in the same network receive the same updates.
+
+## Architecture
+
+*satan* is responsible for and able to:
+
+* Modify an UCI configuration line
+* Replace any file in the system
+* Update a package
+* Update the whole firmware
+* Execute a shell script
+* Report device status
+
+For this, *satan* receives commands from a _zeromq_ SUBSCRIBE socket, on its device-specific `device.info.uuid` channel.
+
+Each command has to be acknowledged or answered by *satan* on its REQ upstream socket.
+
+Those commands are represented in the following [ABNF](http://www.ietf.org/rfc/rfc2234.txt) grammar [D stands for device, S for server] :
+
+```
+S:satan = uuid msgid command checksum
+
+command =  ( urlfirm / binfirm / 
+						urlpak / binpak / 
+						urlscript / binscript /
+						urlfile / binfile /
+						uciline / status )
+
+urlfirm   = 'URLFIRM'   httpurl upgradeoptions
+urlpak    = 'URLPAK'    httpurl *executable
+urlfile   = 'URLFILE'   httpurl destpath
+urlscript = 'URLSCRIPT' httpurl
+
+binfirm   = 'BINFIRM'   binary upgradeoptions
+binpak    = 'BINPAK'    binary *executable
+binfile   = 'BINFILE'   binary destpath
+binscript = 'BINSCRIPT' binary
+
+uciline   = 'UCILINE'   optionname'='optionvalue
+status    = 'STATUS'
+```
+
+* `uuid` is the private device uuid to address to
+* `msgid` a unique ID to the message for its proper ACK
+* `checksum` is a control sum of the message
+* `httpurl` is an URL where the target file, package, firmware can be downloaded from
+* `binary` is the full binary script, file, package... transmitted via zeromq
+* `upgradeoptions` are some options for the firmware upgrade (undefined yet)
+* `executable` is the name of a _service_ to stop and relaunch as in `/etc/init.d/SERVICE start-stop`
+* `destpath` is the destination file where to copy the new one
+* `optionname` the UCI option name to update
+* `optionvalue` the UCI option value to be set.
+
+After successful or not operation, *satan* has to send back something onto the REQ socket. 
+
+
+```
+D:satan = uuid msgid answer
+
+answer  = ( "OK" / 
+						status /
+						"BADCRC" /
+						brokenurl /
+						parseerror /
+						execerror /
+						ucierror /
+						undeferror
+
+status     = "STATUS" fullstatus
+
+brokenurl  = "BROKENURL" httpurl
+parseerror = "PARSEERROR" originalmsg
+execerror  = "EXECERROR" ( executable / script )
+ucierror   = "UCIERROR" optionname
+undeferror = "UNDEFERROR" originalmsg
+```
+
+In turn, the device will wait for any string sent by the remote server as a final ack, such as 'ACK'.
+
+### Device status
+
+`fullstatus` stated above SHALL contain, and is not limited to:
+
+* the memory state of the device ( `cat /proc/meminfo` )
+* the current load snapshot of the device ( `top -n 2` )
+* the current active processes ( `ps` ) 
+* the disk space occupancy ( `df` )
 
 ## Compile
 
 ### As an OpenWRT package:
 
 ```bash
-rm dl/satan-0.0.1.tar.bz2
+rm dl/satan-0.2.0.tar.bz2
 make package/satan/install V=99
-scp bin/ramips/packages/satan_0.0.1-1_ramips.ipk root@[remoterouter]:.
+scp bin/ramips/packages/satan_0.2.0-1_ramips.ipk root@[remoterouter]:.
 ```
 
 ### On the local machine:
@@ -54,7 +139,3 @@ Default value: 2
 * satan.subscribe.linger
 Linger to use on SUB socket.
 Default value: 0
-
-* satan.lsd.group
-Group used for all satan daemons in the network to transmit config.
-Default value: "xconfig"
