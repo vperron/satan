@@ -151,7 +151,12 @@ void config_destroy(config_context* ctx)
 
 int config_get_str(config_context* ctx, char *key, char** output) 
 {
-	return uci_cmd(ctx, CMD_GET, key, output);
+	int ret = uci_cmd(ctx, CMD_GET, key, output);
+	if(ret == STATUS_ERROR) {
+		*output = NULL;  // Default value
+		return STATUS_ERROR;   
+	}
+	return STATUS_OK;
 }
 
 int config_get_int(config_context* ctx, char *key) 
@@ -161,7 +166,7 @@ int config_get_int(config_context* ctx, char *key)
 	ret = uci_cmd(ctx, CMD_GET, key, &buf);
 	if(ret == STATUS_OK && buf != NULL)
 		return atoi(buf);
-	return STATUS_ERROR;
+	return -1; // Default value
 }
 
 double config_get_double(config_context* ctx, char *key) 
@@ -171,7 +176,7 @@ double config_get_double(config_context* ctx, char *key)
 	ret = uci_cmd(ctx, CMD_GET, key, &buf);
 	if(ret == STATUS_OK && buf != NULL)
 		return atof(buf);
-	return STATUS_ERROR;
+	return -1; // Default value
 }
 
 bool config_get_bool(config_context* ctx, char *key) 
@@ -179,7 +184,7 @@ bool config_get_bool(config_context* ctx, char *key)
 	int ret = config_get_int(ctx, key);
 	if(ret != STATUS_ERROR)
 		return ret != 0;
-	return STATUS_ERROR;
+	return false; // Default value
 }
 
 int config_set(config_context* ctx, char *key)

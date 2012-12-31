@@ -44,7 +44,8 @@
 #define STATUS_OK 0
 #define STATUS_ERROR -1
 
-#define MAX_STRING_LEN 128
+#define MAX_STRING_LEN 256
+#define str_equals(a,b) strncmp(a,b,MAX_STRING_LEN) == 0
 
 /*
  * GLOBAL variables declaration

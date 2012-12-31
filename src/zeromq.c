@@ -35,7 +35,8 @@ void zeromq_send_data(void* socket, char *identity, u_int8_t* data, int size) {
 	zmsg_send (&msg, socket);
 }
 
-void *zeromq_create_socket (zctx_t *context, char* endpoint, int type, int linger, int hwm) {
+void *zeromq_create_socket (zctx_t *context, char* endpoint, int type, 
+		char* topic, bool connect, int linger, int hwm) {
 
 	void* socket = NULL;
 	char _endp[MAX_STRING_LEN];
@@ -49,13 +50,27 @@ void *zeromq_create_socket (zctx_t *context, char* endpoint, int type, int linge
 	}
 
 	socket = zsocket_new (context, type);
-	zsocket_set_sndhwm (socket, hwm);
-	zsocket_set_rcvhwm (socket, hwm);
-	zsocket_set_linger (socket, linger);
+	if(hwm != -1) {
+		zsocket_set_sndhwm (socket, hwm);
+		zsocket_set_rcvhwm (socket, hwm);
+	}
+	
+	if(linger != -1) {
+		zsocket_set_linger (socket, linger);
+	} else { // Set linger to 0 as default, safety measure
+		zsocket_set_linger (socket, 0);
+	}
+	
 	if(type == ZMQ_SUB)
-		zsocket_set_subscribe (socket, "");
+		zsocket_set_subscribe (socket, topic == NULL ? "" : topic);
+
 	strncpy(_endp, endpoint, MAX_STRING_LEN);
-	zsocket_connect (socket, "%s", _endp);
-	debugLog("Connected to zmq endpoint : %s",_endp);
+	if(connect) {
+		zsocket_connect (socket, "%s", _endp);
+		debugLog("Connected to zmq endpoint : %s",_endp);
+	} else {
+		zsocket_connect (socket, "%s", _endp);
+		debugLog("Bound to zmq endpoint : %s",_endp);
+	}
 	return socket;
 }

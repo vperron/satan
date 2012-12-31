@@ -29,7 +29,8 @@ extern "C" {
 #endif
 
 void zeromq_send_data(void* socket, char *hwaddr, u_int8_t* data, int size);
-void *zeromq_create_socket (zctx_t *context, char* endpoint, int type, int linger, int hwm);
+void *zeromq_create_socket (zctx_t *context, char* endpoint, int type, 
+		char* topic, bool connect, int linger, int hwm);
 
 #ifdef __cplusplus
 }

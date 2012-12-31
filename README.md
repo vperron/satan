@@ -24,7 +24,7 @@ Each command has to be acknowledged or answered by *satan* on its REQ upstream s
 Those commands are represented in the following [ABNF](http://www.ietf.org/rfc/rfc2234.txt) grammar [D stands for device, S for server] :
 
 ```
-S:satan = uuid msgid command checksum
+S:satan-pub = uuid msgid command checksum
 
 command =  ( urlfirm / binfirm / 
 						urlpak / binpak / 
@@ -57,13 +57,13 @@ status    = 'STATUS'
 * `optionname` the UCI option name to update
 * `optionvalue` the UCI option value to be set.
 
-After successful or not operation, *satan* has to send back something onto the REQ socket. 
 
 
 ```
-D:satan = uuid msgid answer
+D:satan-req = uuid msgid answer
 
-answer  = ( "OK" / 
+answer  = ( "ACCEPTED" / 
+						"COMPLETED" /
 						status /
 						"BADCRC" /
 						brokenurl /
@@ -81,7 +81,17 @@ ucierror   = "UCIERROR" optionname
 undeferror = "UNDEFERROR" originalmsg
 ```
 
-In turn, the device will wait for any string sent by the remote server as a final ack, such as 'ACK'.
+Note that the device may send:
+* `ACCEPTED` in a first round, to notify the server that the message had an acceptable format
+* `COMPLETED` as soon as the operation is finished; `COMPLETED` makes no sense in two cases:
+** `STATUS` request, the completeness is the answer itself
+** Firmware updates, obviously keeping the message id before and after is not that necessary.
+
+In turn, the device will wait for a last ACK from the server.
+
+```
+S:satan-rep = uuid msgid "OK"
+```
 
 ### Device status
 
