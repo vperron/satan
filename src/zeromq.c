@@ -22,7 +22,7 @@
 #include "main.h"
 #include "zeromq.h"
 
-void zeromq_send_data(void* socket, char *identity, u_int8_t* data, int size) {
+void zeromq_send_data(void* socket, char *identity, uint8_t* data, int size) {
 	assert(socket);
 	assert(data);
 

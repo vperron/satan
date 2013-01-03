@@ -30,6 +30,7 @@
 #include "main.h"
 #include "config.h"
 #include "zeromq.h"
+#include "superfasthash.h"
 
 
 /*** DEFINES ***/
@@ -114,71 +115,6 @@ static void s_help(void)
 	exit(1);
 }
 
-/**
- * SuperFastHash : courtesy of Paul Hsieh,
- * http://www.azillionmonkeys.com/qed/hash.html
- * LGPLv2.1 code.
- */
-#undef get16bits
-#if (defined(__GNUC__) && defined(__i386__)) || defined(__WATCOMC__) \
-  || defined(_MSC_VER) || defined (__BORLANDC__) || defined (__TURBOC__)
-#define get16bits(d) (*((const u_int16_t *) (d)))
-#define get32bits(d) (*((const u_int32_t *) (d)))
-#endif
-
-#if !defined (get16bits)
-#define get16bits(d) ((((u_int32_t)(((const uint8_t *)(d))[1])) << 8)\
-                       +(u_int32_t)(((const uint8_t *)(d))[0]) )
-#define get32bits(d) ((((u_int32_t)(((const uint8_t *)(d))[3])) << 24)\
-											+(((u_int32_t)(((const uint8_t *)(d))[2])) << 16)\
-											+(((u_int32_t)(((const uint8_t *)(d))[1])) << 8)\
-                      +(u_int32_t)(((const uint8_t *)(d))[0]) )
-#endif
-
-static u_int32_t s_hash32_fast (u_char* data, int len, u_int32_t hash) {
-	u_int32_t tmp;
-	int rem;
-
-	if (len <= 0 || data == NULL) return 0;
-
-	rem = len & 3;
-	len >>= 2;
-
-	/* Main loop */
-	for (;len > 0; len--) {
-		hash  += get16bits (data);
-		tmp    = (get16bits (data+2) << 11) ^ hash;
-		hash   = (hash << 16) ^ tmp;
-		data  += 2*sizeof (u_int16_t);
-		hash  += hash >> 11;
-	}
-
-	/* Handle end cases */
-	switch (rem) {
-		case 3: hash += get16bits (data);
-						hash ^= hash << 16;
-						hash ^= ((signed char)data[sizeof (u_int16_t)]) << 18;
-						hash += hash >> 11;
-						break;
-		case 2: hash += get16bits (data);
-						hash ^= hash << 11;
-						hash += hash >> 17;
-						break;
-		case 1: hash += (signed char)*data;
-						hash ^= hash << 10;
-						hash += hash >> 1;
-	}
-
-	/* Force "avalanching" of final 127 bits */
-	hash ^= hash << 3;
-	hash += hash >> 5;
-	hash ^= hash << 4;
-	hash += hash >> 17;
-	hash ^= hash << 25;
-	hash += hash >> 6;
-
-	return hash;
-}
 
 static void s_handle_cmdline(satan_args_t* args, int argc, char** argv) {
 	int flags = 0;
@@ -319,11 +255,11 @@ static void s_apply_config(satan_args_t* args, const char* key, const char* valu
  *
  * \return status one of the MSG_ANSWER_* messages.
  */
-int s_parse_message(zmsg_t* message, char** msgid, u_int8_t* command, zmsg_t** arguments) 
+int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** arguments) 
 {
 	zmsg_t* duplicate, *_arguments;
-	u_int8_t _intcmd;
-	u_int32_t _computedsum;
+	uint8_t _intcmd;
+	uint32_t _computedsum;
 	int ret;
 
 	char *_uuid = 0, *_msgid = 0, *_command = 0, *_url = 0, *_file = 0, *_exec = 0;
@@ -346,17 +282,17 @@ int s_parse_message(zmsg_t* message, char** msgid, u_int8_t* command, zmsg_t** a
 	/*  Pop arguments one by one, check them */
 	_uuid = zmsg_popstr(duplicate);
 	if(_uuid == NULL || strlen(_uuid) != SATAN_UUID_LEN) goto s_parse_unreadable;
-	_computedsum = s_hash32_fast((u_char*)_uuid,strlen(_uuid), 0);
+	_computedsum = SuperFastHash((uint8_t*)_uuid,strlen(_uuid), 0);
 
 	_msgid = zmsg_popstr(duplicate); 
 	if(_msgid == NULL || strlen(_msgid) != SATAN_MSGID_LEN) goto s_parse_unreadable;
-	_computedsum = s_hash32_fast((u_char*)_msgid,strlen(_msgid),_computedsum);
+	_computedsum = SuperFastHash((uint8_t*)_msgid,strlen(_msgid),_computedsum);
 
 	*msgid = strdup(_msgid);
 
 	_command = zmsg_popstr(duplicate);
 	if(_command == NULL) goto s_parse_unreadable;
-	_computedsum = s_hash32_fast((u_char*)_command,strlen(_command),_computedsum);
+	_computedsum = SuperFastHash((uint8_t*)_command,strlen(_command),_computedsum);
 
 	if(str_equals(_command,MSG_COMMAND_STR_URLFIRM)) {
 		_intcmd = MSG_COMMAND_URLFIRM;
@@ -395,7 +331,7 @@ int s_parse_message(zmsg_t* message, char** msgid, u_int8_t* command, zmsg_t** a
 			{
 				_url = zmsg_popstr(duplicate);
 				if(_url == NULL) goto s_parse_parseerror;
-				_computedsum = s_hash32_fast((u_char*)_url,strlen(_url),_computedsum);
+				_computedsum = SuperFastHash((uint8_t*)_url,strlen(_url),_computedsum);
 			} break;
 		case MSG_COMMAND_BINFIRM:
 		case MSG_COMMAND_BINSCRIPT:
@@ -404,7 +340,7 @@ int s_parse_message(zmsg_t* message, char** msgid, u_int8_t* command, zmsg_t** a
 			{
 				_bin = zmsg_pop(duplicate);
 				if(_bin == NULL) goto s_parse_parseerror;
-				_computedsum = s_hash32_fast(zframe_data(_bin),zframe_size(_bin),_computedsum);
+				_computedsum = SuperFastHash(zframe_data(_bin),zframe_size(_bin),_computedsum);
 			} break;
 		default:
 			break;
@@ -417,7 +353,7 @@ int s_parse_message(zmsg_t* message, char** msgid, u_int8_t* command, zmsg_t** a
 				if(zmsg_size(duplicate) != 2) goto s_parse_parseerror;
 				_file = zmsg_popstr(duplicate);
 				if(_file == NULL) goto s_parse_parseerror;
-				_computedsum = s_hash32_fast((u_char*)_file,strlen(_file),_computedsum);
+				_computedsum = SuperFastHash((uint8_t*)_file,strlen(_file),_computedsum);
 			} break;
 		case MSG_COMMAND_URLFIRM:
 		case MSG_COMMAND_BINFIRM:
@@ -425,7 +361,7 @@ int s_parse_message(zmsg_t* message, char** msgid, u_int8_t* command, zmsg_t** a
 				if(zmsg_size(duplicate) != 2) goto s_parse_parseerror;
 				_optframe = zmsg_pop(duplicate);
 				if(_optframe == NULL || zframe_size(_optframe) == SATAN_FIRM_OPTIONS_LEN) goto s_parse_parseerror;
-				_computedsum = s_hash32_fast(zframe_data(_optframe),zframe_size(_optframe),_computedsum);
+				_computedsum = SuperFastHash(zframe_data(_optframe),zframe_size(_optframe),_computedsum);
 			} break;
 		case MSG_COMMAND_BINPAK:
 		case MSG_COMMAND_URLPAK:
@@ -435,7 +371,7 @@ int s_parse_message(zmsg_t* message, char** msgid, u_int8_t* command, zmsg_t** a
 				for(_k=0;_k<_size;_k++) {
 					_exec = zmsg_popstr(duplicate);
 					if(_exec == NULL) goto s_parse_parseerror;
-					_computedsum = s_hash32_fast((u_char*)_exec,strlen(_exec),_computedsum);
+					_computedsum = SuperFastHash((uint8_t*)_exec,strlen(_exec),_computedsum);
 				}
 			} break;
 		default:
@@ -447,7 +383,7 @@ int s_parse_message(zmsg_t* message, char** msgid, u_int8_t* command, zmsg_t** a
 
 	/* Verify checksum */
 	_chksumframe = zmsg_pop(duplicate);
-	u_int32_t _chksum = get32bits(zframe_data(_chksumframe));
+	uint32_t _chksum = get32bits(zframe_data(_chksumframe));
 	debugLog("Sent checksum = %08X VS computed = %08X", _chksum, _computedsum);
 	if(_chksum != _computedsum) 
 		goto s_parse_badcrc;
@@ -540,7 +476,7 @@ int main(int argc, char *argv[])
 	while(!zctx_interrupted) {
 
 		char* msgid;
-		u_int8_t command;
+		uint8_t command;
 		zmsg_t* arguments;
 
 		zmsg_t *message = zmsg_recv (args->sub_socket);
