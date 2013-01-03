@@ -111,7 +111,7 @@ typedef struct _satan_args_t {
 
 static void s_help(void)
 {
-	errorLog("Usage: satan [-s SUB_ENDPOINT] [-r REQ_ENDPOINT]\n");
+	errorLog("Usage: satan [-u uuid] [-s SUB_ENDPOINT] [-r REQ_ENDPOINT]\n");
 	exit(1);
 }
 
@@ -127,6 +127,14 @@ static void s_handle_cmdline(satan_args_t* args, int argc, char** argv) {
 					args->sub_endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
 				} else {
 					errorLog("Error: Please specify a valid endpoint !");
+				}
+				break;
+			case 'u': 
+				if(flags+2<argc) {
+					flags++;
+					args->device_uuid = strndup(argv[1+flags],MAX_STRING_LEN);
+				} else {
+					errorLog("Error: Please specify a valid uuid !");
 				}
 				break;
 			case 'r': 
@@ -384,7 +392,6 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 	/* Verify checksum */
 	_chksumframe = zmsg_pop(duplicate);
 	uint32_t _chksum = get32bits(zframe_data(_chksumframe));
-	debugLog("Sent checksum = %08X VS computed = %08X", _chksum, _computedsum);
 	if(_chksum != _computedsum) 
 		goto s_parse_badcrc;
 
@@ -485,8 +492,6 @@ int main(int argc, char *argv[])
 			debugLog("Received msg of len: %d bytes", (int)zmsg_content_size(message));
 
 			ret = s_parse_message(message, &msgid, &command, &arguments);
-			debugLog("Parse operation returned : %d with %s, %d ", 
-					ret, msgid, command);
 			switch(ret) {
 				case MSG_ANSWER_UNREADABLE:
 					{
