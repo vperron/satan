@@ -3,5 +3,5 @@ config section 'subscribe'
 	option linger '0'
 	option hwm '100'
 
-config option 'request'
+config option 'answer'
 	option endpoint 'tcp://192.168.1.15:10081'

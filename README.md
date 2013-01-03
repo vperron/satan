@@ -60,7 +60,7 @@ status    = 'STATUS'
 
 
 ```
-D:satan-req = uuid msgid answer
+D:satan-req = uuid msgid answer | uuid zeromsgid "UNREADABLE" originalmsg
 
 answer  = ( "ACCEPTED" / 
 						"COMPLETED" /
@@ -80,6 +80,9 @@ execerror  = "EXECERROR" ( executable / script )
 ucierror   = "UCIERROR" optionname
 undeferror = "UNDEFERROR" originalmsg
 ```
+
+There above, bote that if a message is _HEAVILY_ unreadable -meaning we did not even succeed
+to read up to the message id, we send it back with a zeroed `msgid`.
 
 Note that the device may send:
 * `ACCEPTED` in a first round, to notify the server that the message had an acceptable format
