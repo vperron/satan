@@ -368,7 +368,7 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 			{
 				if(zmsg_size(duplicate) != 2) goto s_parse_parseerror;
 				_optframe = zmsg_pop(duplicate);
-				if(_optframe == NULL || zframe_size(_optframe) == SATAN_FIRM_OPTIONS_LEN) goto s_parse_parseerror;
+				if(_optframe == NULL || zframe_size(_optframe) != SATAN_FIRM_OPTIONS_LEN) goto s_parse_parseerror;
 				_computedsum = SuperFastHash(zframe_data(_optframe),zframe_size(_optframe),_computedsum);
 			} break;
 		case MSG_COMMAND_BINPAK:
@@ -497,7 +497,7 @@ int main(int argc, char *argv[])
 					{
 						zmsg_t* answer = zmsg_dup(message);
 						zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UNREADABLE);
-						zmsg_pushstr(answer, "%0" __STR(SATAN_MSGID_LEN) "d", 0); /*  send a zeroed msgid */
+						zmsg_pushstr(answer, "%032d", 0); /*  send a zeroed msgid */
 						zmsg_pushstr(answer, "%s", args->device_uuid);
 						zmsg_send(&answer, args->push_socket);
 					} break;
