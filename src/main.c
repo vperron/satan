@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <czmq.h>
+#include <stdarg.h>
 
 #include "main.h"
 #include "config.h"
@@ -161,93 +162,43 @@ static void s_handle_cmdline(satan_args_t* args, int argc, char** argv) {
 
 }
 
-static int s_parse_config_val(const char *str, char *key, char *value)
+static int s_execute_child(char* command, int count, ...)
 {
-	int i;
-	char buf[MAX_STRING_LEN];
+	int i = 0;
+	int ret = STATUS_ERROR;
+	int sig = SIGCHLD;
+	char** argv = NULL;
+	char *env[] = { NULL };
 
-	memset(buf,0,MAX_STRING_LEN);
+	if(access(command,F_OK) == -1) return STATUS_ERROR;
 
-	strncpy(buf,str,MAX_STRING_LEN);
-	for(i=0;i<MAX_STRING_LEN;i++) {
-		if (buf[i] == '=') {
-			buf[i] = ' ';
-			break;
+	argv = malloc((count+2)*sizeof(char*));
+	memset(argv, 0, (count+2)*sizeof(char*));
+
+	va_list _params;
+	va_start(_params, count);
+	for(i=0; i<count; i++) {
+		argv[i+1] = va_arg(_params, char*);
+	}
+	va_end(_params);
+
+	argv[0] = command;
+
+	debugLog("Command '%s' , arg0 = %s, arg1 = %s, arg2 = %s", 
+			command, argv[0], argv[1], argv[2]);
+
+  pid_t process_id = vfork();
+  if (!process_id) {
+		execve(command,argv,env);
+		exit(0);
+	}
+	if(process_id>0) {
+		ret = wait(&sig) == -1 ? STATUS_ERROR : STATUS_OK;
+		if(ret == STATUS_OK) {
+			ret = WEXITSTATUS(sig) == 0 ? STATUS_OK : STATUS_ERROR;
 		}
 	}
 
-	if (sscanf(buf, "%s %s", key, value) == 2) 
-		return true;
-
-	return false;
-}
-
-static int s_parse_key(const char *key, char *pkg, char *section, char* prop)
-{
-	int i;
-	char buf[MAX_STRING_LEN];
-	memset(buf,0,MAX_STRING_LEN);
-
-	strncpy(buf,key,MAX_STRING_LEN);
-	for(i=0;i<MAX_STRING_LEN;i++) {
-		if (buf[i] == '.') 	buf[i] = ' ';
-		if (buf[i] == '\0') break;
-	}
-
-	if (sscanf(buf, "%s %s %s", pkg, section, prop) == 3) 
-		return true;
-
-	return false;
-}
-
-static void s_start_daemon(char* pkg)
-{
-	int sig = SIGCHLD;
-	char path[MAX_STRING_LEN];
-	char *argv[] = { NULL, "start", NULL };
-	char *env[] = { NULL };
-  pid_t process_id = vfork();
-  if (!process_id) {
-		snprintf(path,MAX_STRING_LEN,"/etc/init.d/%s", pkg);
-		argv[0] = path;
-		execve(path,argv, env);
-		exit(0);
-	}
-	if(process_id>0) wait(&sig);
-}
-
-static void s_stop_daemon(char* pkg)
-{
-	int sig = SIGCHLD;
-	char path[MAX_STRING_LEN];
-	char *argv[] = { NULL, "stop", NULL };
-	char *env[] = { NULL };
-  pid_t process_id = vfork();
-  if (!process_id) {
-		snprintf(path,MAX_STRING_LEN,"/etc/init.d/%s", pkg);
-		argv[0] = path;
-		execve(path,argv, env);
-		exit(0);
-	}
-	if(process_id>0) wait(&sig);
-}
-
-static int s_apply_config(satan_args_t* args, const char* key, const char* value) 
-{
-	int ret = MSG_ANSWER_UNDEFERROR;
-
-	char str[MAX_STRING_LEN];
-	char pkg[MAX_STRING_LEN], section[MAX_STRING_LEN], prop[MAX_STRING_LEN];
-	/*  Determine if it's an UCI config */
-	if(s_parse_key(key, pkg, section, prop)) {
-		ret = snprintf(str,MAX_STRING_LEN,"%s=%s",key,value);
-		if(ret != 2) return MSG_ANSWER_PARSEERROR;
-		ret = config_set(args->cfg_ctx,str);
-		if(ret == STATUS_ERROR) return MSG_ANSWER_UCIERROR;
-		ret = config_commit(args->cfg_ctx,pkg);
-		if(ret == STATUS_ERROR) return MSG_ANSWER_UCIERROR;
-		return MSG_ANSWER_COMPLETED;
-	}
 	return ret;
 }
 
@@ -269,14 +220,14 @@ static int s_apply_config(satan_args_t* args, const char* key, const char* value
  */
 int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** arguments) 
 {
-	zmsg_t* duplicate = 0;
-	zmsg_t* _arguments = 0;
+	zmsg_t* duplicate = NULL;
+	zmsg_t* _arguments = NULL;
 	uint8_t _intcmd;
 	uint32_t _computedsum;
 	int ret;
 
-	char *_uuid = 0, *_msgid = 0, *_command = 0, *_url = 0, *_file = 0, *_exec = 0;
-	zframe_t *_bin = 0, *_optframe = 0, *_chksumframe = 0;
+	char *_uuid = NULL, *_msgid = NULL, *_command = NULL, *_url = NULL, *_file = NULL, *_exec = NULL;
+	zframe_t *_bin = NULL, *_optframe = NULL, *_chksumframe = NULL;
 
 	assert(message);
 	assert(msgid);
@@ -378,6 +329,7 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 			} break;
 		case MSG_COMMAND_BINPAK:
 		case MSG_COMMAND_URLPAK:
+		case MSG_COMMAND_UCILINE:
 			{
 				int _k;
 				int _size = zmsg_size(duplicate)-1;
@@ -437,46 +389,148 @@ s_parse_parseerror:
 	goto s_parse_finish;
 }
 
-int s_process_message(satan_args_t* args, uint8_t command, zmsg_t* arguments) 
+
+static int s_apply_uciline(satan_args_t* args, zmsg_t* arguments, char** lasterror)
 {
+	int i, size, ret;
+	char *param = NULL;
+	char buffer[MAX_STRING_LEN], key[MAX_STRING_LEN], value[MAX_STRING_LEN];
+	char pkg[MAX_STRING_LEN], section[MAX_STRING_LEN], prop[MAX_STRING_LEN];
+	char path[MAX_STRING_LEN];
+
+	assert(args);
+	assert(arguments);
+	assert(lasterror);
+
+	*lasterror = NULL;
+
+	param = zmsg_popstr(arguments);
+	*lasterror = strdup(param); // Save as the last possible error
+	if(param == NULL) 
+		goto s_apply_uciline_parseerror;
+
+	/* Check the correctness of the expression */ 
+	for(i=0;i<strlen(param);i++) {
+		if (param[i] == '=') { param[i] = ' '; break; }
+	}
+
+	if (sscanf(param, "%s %s", key, value) != 2) 
+		goto s_apply_uciline_parseerror;
+
+	for(i=0;i<strlen(key);i++) {
+		if (key[i] == '.') 	key[i] = ' ';
+	}
+	if (sscanf(key, "%s %s %s", pkg, section, prop) != 3) 
+		goto s_apply_uciline_parseerror;
+
+	/*  Apply the configuration  */
+	if(snprintf(buffer,MAX_STRING_LEN,"%s.%s.%s=%s",pkg,section,prop,value) < 0)
+		goto s_apply_uciline_parseerror;
+
+	if(config_set(args->cfg_ctx,buffer) != STATUS_OK) 
+		goto s_apply_uciline_ucierror;
+	if(config_commit(args->cfg_ctx,pkg) != STATUS_OK)
+		goto s_apply_uciline_ucierror;
+
+	/*  Execute the eventual daemons */
+	size = zmsg_size(arguments);
+	for(i=0;i<size;i++) {
+		char *daemon = zmsg_popstr(arguments);
+		if(daemon == NULL) goto s_apply_uciline_parseerror;
+		snprintf(path,MAX_STRING_LEN,"/etc/init.d/%s", daemon);
+		free(daemon);
+
+		free(*lasterror);
+		*lasterror = strdup(path);
+
+		ret = s_execute_child(path, 1, "stop");
+		if(ret != STATUS_OK) goto s_apply_uciline_execerror;
+		ret = s_execute_child(path, 1, "start");
+		if(ret != STATUS_OK) goto s_apply_uciline_execerror;
+	}
+			
+	if(*lasterror) {
+		free(*lasterror);
+		*lasterror = NULL;
+	}
+
+	ret = MSG_ANSWER_COMPLETED;
+
+s_apply_uciline_end:
+
+	if(param)
+		free(param);
+
+	return ret;
+
+s_apply_uciline_execerror:
+	ret = MSG_ANSWER_EXECERROR;
+	goto s_apply_uciline_end;
+
+s_apply_uciline_ucierror:
+	ret = MSG_ANSWER_UCIERROR;
+	goto s_apply_uciline_end;
+
+s_apply_uciline_parseerror:
+	ret = MSG_ANSWER_PARSEERROR;
+	goto s_apply_uciline_end;
+
+}
+
+static int s_process_message(satan_args_t* args, uint8_t command, zmsg_t* arguments, char** lasterror) 
+{
+
+	assert(args);
+	assert(lasterror);
 
 	int ret = MSG_ANSWER_UNDEFERROR;
 
-	zmsg_t* _arguments = arguments ? zmsg_dup(arguments) : NULL ;
-
 	switch(command) {
 		case MSG_COMMAND_UCILINE:
-			{
-				char key[MAX_STRING_LEN], value[MAX_STRING_LEN];
-				char* param = zmsg_popstr(_arguments);
-				if(s_parse_config_val(param, key, value)) {
-					ret = s_apply_config(args, key, value);
-					// TODO: Change the protocol to add *exec after uciline
-					// s_stop_daemon(pkg);
-					// s_start_daemon(pkg);
-				} else {
-					ret = MSG_ANSWER_PARSEERROR;
-				}
-				free(param);
-			} break;
+				ret = s_apply_uciline(args, arguments,lasterror);
+				break;
+
 			/*  TODO: Implement the rest */
 	}
-
-	if(_arguments) zmsg_destroy(&_arguments);
 
 	return ret;
 }
 
-static int s_send_answer(satan_args_t* args, int code, char* msgid, uint8_t command, zmsg_t* arguments) 
+static int s_send_answer(satan_args_t* args, int code, char* msgid, char* lasterror) 
 {
+
+
 	switch(code) {
+		case MSG_ANSWER_EXECERROR:
+			{
+				/*  TODO: factor this a little  */
+				zmsg_t* answer = zmsg_new();
+				zmsg_pushstr(answer, "%s", lasterror);
+				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_EXECERROR);
+				zmsg_pushstr(answer, "%s", msgid);
+				zmsg_pushstr(answer, "%s", args->device_uuid);
+				zmsg_send(&answer, args->push_socket);
+			} break;
 		case MSG_ANSWER_PARSEERROR:
-			break;
+			{
+				zmsg_t* answer = zmsg_new();
+				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_PARSEERROR);
+				zmsg_pushstr(answer, "%s", msgid);
+				zmsg_pushstr(answer, "%s", args->device_uuid);
+				zmsg_send(&answer, args->push_socket);
+			} break;
 		case MSG_ANSWER_UNDEFERROR:
-			break;
+			{
+				zmsg_t* answer = zmsg_new();
+				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UNDEFERROR);
+				zmsg_pushstr(answer, "%s", msgid);
+				zmsg_pushstr(answer, "%s", args->device_uuid);
+				zmsg_send(&answer, args->push_socket);
+			} break;
 		case MSG_ANSWER_UCIERROR:
 			{
 				zmsg_t* answer = zmsg_new();
+				zmsg_pushstr(answer, "%s", lasterror);
 				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UCIERROR);
 				zmsg_pushstr(answer, "%s", msgid);
 				zmsg_pushstr(answer, "%s", args->device_uuid);
@@ -569,14 +623,16 @@ int main(int argc, char *argv[])
 				} break;
 			case MSG_ANSWER_ACCEPTED:
 				{
+					char* lasterror = NULL;
+
 					zmsg_t* answer = zmsg_new();
 					zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_ACCEPTED);
 					zmsg_pushstr(answer, "%s", msgid);
 					zmsg_pushstr(answer, "%s", args->device_uuid);
 					zmsg_send(&answer, args->push_socket);
 
-					ret = s_process_message(args, command, arguments);
-					s_send_answer(args, ret, msgid, command, arguments);
+					ret = s_process_message(args, command, arguments,&lasterror);
+					s_send_answer(args, ret, msgid, lasterror);
 
 				} break;
 		}

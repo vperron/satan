@@ -42,7 +42,7 @@ binpak    = 'BINPAK'    binary *executable
 binfile   = 'BINFILE'   binary destpath
 binscript = 'BINSCRIPT' binary
 
-uciline   = 'UCILINE'   optionname'='optionvalue
+uciline   = 'UCILINE'   optionname'='optionvalue *executable
 status    = 'STATUS'
 ```
 
@@ -75,10 +75,10 @@ answer  = ( "ACCEPTED" /
 status     = "STATUS" fullstatus
 
 brokenurl  = "BROKENURL" httpurl
-parseerror = "PARSEERROR" originalmsg
-execerror  = "EXECERROR" ( executable / script )
+parseerror = "PARSEERROR"
+execerror  = "EXECERROR" ( package / executable / script )
 ucierror   = "UCIERROR" optionname
-undeferror = "UNDEFERROR" originalmsg
+undeferror = "UNDEFERROR" 
 ```
 
 There above, bote that if a message is _HEAVILY_ unreadable -meaning we did not even succeed

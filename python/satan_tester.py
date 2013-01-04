@@ -12,7 +12,9 @@ import unittest
 Test all the protocol configs, one by one.
 Victor Perron <victor.perron@locarise.com>
 
-TODO: Test the answer format. Maybe change its complexity ?
+If you want to run a single test, run:
+
+    python -m unittest satan_tester.TestProtocol.<test_method>
 
 """
 
@@ -63,6 +65,7 @@ class TestProtocol(unittest.TestCase):
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
 
     def test_uciline_0(self):
         msgid = gen_uuid()
@@ -70,18 +73,65 @@ class TestProtocol(unittest.TestCase):
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGPARSEERROR')
+
     def test_uciline_1(self):
         msgid = gen_uuid()
         send_msg(pub_socket, [device_id, msgid, "UCILINE", "uciline"])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
-    def test_uciline_2(self):
-        msgid = gen_uuid()
-        send_msg(pub_socket, [device_id, msgid, "UCILINE", "uciline", "stupid"])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGPARSEERROR')
+
+    def test_uciline_2(self):
+        msgid = gen_uuid()
+        send_msg(pub_socket, [device_id, msgid, "UCILINE", "test=foo", "exec1"])
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGPARSEERROR')
+
+    def test_uciline_3(self):
+        """
+        For that test to complete, please place two services 'fooservice1' 
+        and 'fooservice2' in /etc/init.d
+        """
+        msgid = gen_uuid()
+        send_msg(pub_socket, [device_id, msgid, "UCILINE", "device.info.uuid=aaaaa", 
+                              "fooservice1", "fooservice1"])
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGCOMPLETED')
+
+    def test_uciline_4(self):
+        msgid = gen_uuid()
+        send_msg(pub_socket, [device_id, msgid, "UCILINE", "device.info.uuid=aaaaa", 
+                              "caca", "fooservice1"])
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGEXECERROR')
+        self.assertEqual(ans[3], '/etc/init.d/caca')
+
+    def test_uciline_5(self):
+        msgid = gen_uuid()
+        uciline = "foo.info.uuid=aaaaa"
+        send_msg(pub_socket, [device_id, msgid, "UCILINE", uciline])
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGUCIERROR')
+        self.assertEqual(ans[3], uciline)
 
     def test_checksum(self):
         msgid = gen_uuid()
@@ -137,6 +187,7 @@ class TestProtocol(unittest.TestCase):
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
 
     def test_urlpak_0(self):
         msgid = gen_uuid()
@@ -150,18 +201,21 @@ class TestProtocol(unittest.TestCase):
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
     def test_urlpak_2(self):
         msgid = gen_uuid()
         send_msg(pub_socket, [device_id, msgid, "URLPAK", "http://truc", "executable"])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
     def test_urlpak_3(self):
         msgid = gen_uuid()
         send_msg(pub_socket, [device_id, msgid, "URLPAK", "http://truc", "exec1", "exec2", "exec3"])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
 
     def test_urlfile_0(self):
         msgid = gen_uuid()
@@ -181,6 +235,7 @@ class TestProtocol(unittest.TestCase):
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
     def test_urlfile_3(self):
         msgid = gen_uuid()
         send_msg(pub_socket, [device_id, msgid, "URLFILE", "http://truc", "destination", "foo"])
@@ -200,6 +255,7 @@ class TestProtocol(unittest.TestCase):
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
     def test_urlscript_2(self):
         msgid = gen_uuid()
         send_msg(pub_socket, [device_id, msgid, "URLSCRIPT", "http://truc", "stupid"])
@@ -231,6 +287,7 @@ class TestProtocol(unittest.TestCase):
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
 
     def test_binpak_0(self):
         msgid = gen_uuid()
@@ -244,18 +301,21 @@ class TestProtocol(unittest.TestCase):
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
     def test_binpak_2(self):
         msgid = gen_uuid()
         send_msg(pub_socket, [device_id, msgid, "BINPAK", binarydata, "executable"])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
     def test_binpak_3(self):
         msgid = gen_uuid()
         send_msg(pub_socket, [device_id, msgid, "BINPAK", binarydata, "exec1", "exec2", "exec3"])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
 
     def test_binfile_0(self):
         msgid = gen_uuid()
@@ -275,6 +335,7 @@ class TestProtocol(unittest.TestCase):
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
     def test_binfile_3(self):
         msgid = gen_uuid()
         send_msg(pub_socket, [device_id, msgid, "BINFILE", binarydata, "destination", "foo"])
@@ -294,6 +355,7 @@ class TestProtocol(unittest.TestCase):
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
     def test_binscript_2(self):
         msgid = gen_uuid()
         send_msg(pub_socket, [device_id, msgid, "BINSCRIPT", binarydata, "stupid"])
