@@ -101,7 +101,7 @@ typedef struct _satan_args_t {
 	int sub_linger;
 
 	void *push_socket;
-	char *req_endpoint;
+	char *push_endpoint;
 	int req_hwm;
 	int req_linger;
 
@@ -111,7 +111,7 @@ typedef struct _satan_args_t {
 
 static void s_help(void)
 {
-	errorLog("Usage: satan [-u uuid] [-s SUB_ENDPOINT] [-r REQ_ENDPOINT]\n");
+	errorLog("Usage: satan [-u uuid] [-s SUB_ENDPOINT] [-p PUSH_ENDPOINT]\n");
 	exit(1);
 }
 
@@ -137,10 +137,10 @@ static void s_handle_cmdline(satan_args_t* args, int argc, char** argv) {
 					errorLog("Error: Please specify a valid uuid !");
 				}
 				break;
-			case 'r': 
+			case 'p': 
 				if(flags+2<argc) {
 					flags++;
-					args->req_endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
+					args->push_endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
 				} else {
 					errorLog("Error: Please specify a valid endpoint !");
 				}
@@ -232,19 +232,23 @@ static void s_stop_daemon(char* pkg)
 	if(process_id>0) wait(&sig);
 }
 
-static void s_apply_config(satan_args_t* args, const char* key, const char* value) 
+static int s_apply_config(satan_args_t* args, const char* key, const char* value) 
 {
+	int ret = MSG_ANSWER_UNDEFERROR;
+
 	char str[MAX_STRING_LEN];
 	char pkg[MAX_STRING_LEN], section[MAX_STRING_LEN], prop[MAX_STRING_LEN];
 	/*  Determine if it's an UCI config */
 	if(s_parse_key(key, pkg, section, prop)) {
-		snprintf(str,MAX_STRING_LEN,"%s=%s",key,value);
-		config_set(args->cfg_ctx,str);
-		config_commit(args->cfg_ctx,pkg);
-		s_stop_daemon(pkg);
-		s_start_daemon(pkg);
+		ret = snprintf(str,MAX_STRING_LEN,"%s=%s",key,value);
+		if(ret != 2) return MSG_ANSWER_PARSEERROR;
+		ret = config_set(args->cfg_ctx,str);
+		if(ret == STATUS_ERROR) return MSG_ANSWER_UCIERROR;
+		ret = config_commit(args->cfg_ctx,pkg);
+		if(ret == STATUS_ERROR) return MSG_ANSWER_UCIERROR;
+		return MSG_ANSWER_COMPLETED;
 	}
-	/*  TODO: package install feature */
+	return ret;
 }
 
 /**
@@ -265,7 +269,8 @@ static void s_apply_config(satan_args_t* args, const char* key, const char* valu
  */
 int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** arguments) 
 {
-	zmsg_t* duplicate, *_arguments;
+	zmsg_t* duplicate = 0;
+	zmsg_t* _arguments = 0;
 	uint8_t _intcmd;
 	uint32_t _computedsum;
 	int ret;
@@ -432,15 +437,63 @@ s_parse_parseerror:
 	goto s_parse_finish;
 }
 
-int s_process_message(zmsg_t* message) 
+int s_process_message(satan_args_t* args, uint8_t command, zmsg_t* arguments) 
 {
-	/*  TODO: Implement actual fucntionality */
-	/*  
-	char key[MAX_STRING_LEN], value[MAX_STRING_LEN];
-	if(s_parse_config_val(_msg, key, value)) {
-		s_apply_config(args, key, value);
+
+	int ret = MSG_ANSWER_UNDEFERROR;
+
+	zmsg_t* _arguments = arguments ? zmsg_dup(arguments) : NULL ;
+
+	switch(command) {
+		case MSG_COMMAND_UCILINE:
+			{
+				char key[MAX_STRING_LEN], value[MAX_STRING_LEN];
+				char* param = zmsg_popstr(_arguments);
+				if(s_parse_config_val(param, key, value)) {
+					ret = s_apply_config(args, key, value);
+					// TODO: Change the protocol to add *exec after uciline
+					// s_stop_daemon(pkg);
+					// s_start_daemon(pkg);
+				} else {
+					ret = MSG_ANSWER_PARSEERROR;
+				}
+				free(param);
+			} break;
+			/*  TODO: Implement the rest */
 	}
-	*/ 
+
+	if(_arguments) zmsg_destroy(&_arguments);
+
+	return ret;
+}
+
+static int s_send_answer(satan_args_t* args, int code, char* msgid, uint8_t command, zmsg_t* arguments) 
+{
+	switch(code) {
+		case MSG_ANSWER_PARSEERROR:
+			break;
+		case MSG_ANSWER_UNDEFERROR:
+			break;
+		case MSG_ANSWER_UCIERROR:
+			{
+				zmsg_t* answer = zmsg_new();
+				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UCIERROR);
+				zmsg_pushstr(answer, "%s", msgid);
+				zmsg_pushstr(answer, "%s", args->device_uuid);
+				zmsg_send(&answer, args->push_socket);
+			} break;
+		case MSG_ANSWER_COMPLETED:
+			{
+				zmsg_t* answer = zmsg_new();
+				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_COMPLETED);
+				zmsg_pushstr(answer, "%s", msgid);
+				zmsg_pushstr(answer, "%s", args->device_uuid);
+				zmsg_send(&answer, args->push_socket);
+			} break;
+		default:
+			break;
+	}
+	
 	return STATUS_OK;
 }
 
@@ -458,7 +511,7 @@ int main(int argc, char *argv[])
 	args->sub_hwm = config_get_int(args->cfg_ctx, CONF_SUBSCRIBE_HWM);
 	args->sub_linger = config_get_int(args->cfg_ctx, CONF_SUBSCRIBE_LINGER);
 
-	config_get_str(args->cfg_ctx,CONF_ANSWER_ENDPOINT,&args->req_endpoint);
+	config_get_str(args->cfg_ctx,CONF_ANSWER_ENDPOINT,&args->push_endpoint);
 	args->req_hwm = config_get_int(args->cfg_ctx, CONF_ANSWER_HWM);
 	args->req_linger = config_get_int(args->cfg_ctx, CONF_ANSWER_LINGER);
 	
@@ -470,12 +523,12 @@ int main(int argc, char *argv[])
 			args->device_uuid, true, args->sub_linger, args->sub_hwm);
 	assert(args->sub_socket != NULL);
 
-	/*  TODO: Until now, we acknowledge the messages with a PUSH socket.
+	/*  NOTE: Until now, we acknowledge the messages with a PUSH socket.
 	 *  It blocks on a full HWM, meaning "if too many messages in the queue"
 	 *  If we use a REQ socket, we will also have various issues while waiting 
 	 *  for our answers. Moreover, getting an ACK or not from the server changes
 	 *  NOTHING here. */
-	args->push_socket = zeromq_create_socket(zmq_ctx, args->req_endpoint, ZMQ_PUSH, 
+	args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH, 
 			NULL, true, args->req_linger, args->req_hwm);
 	assert(args->push_socket != NULL);
 
@@ -488,56 +541,61 @@ int main(int argc, char *argv[])
 
 		zmsg_t *message = zmsg_recv (args->sub_socket);
 
-		if(message) {
-			debugLog("Received msg of len: %d bytes", (int)zmsg_content_size(message));
+		if(!message) continue;
 
-			ret = s_parse_message(message, &msgid, &command, &arguments);
-			switch(ret) {
-				case MSG_ANSWER_UNREADABLE:
-					{
-						zmsg_t* answer = zmsg_dup(message);
-						zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UNREADABLE);
-						zmsg_pushstr(answer, "%032d", 0); /*  send a zeroed msgid */
-						zmsg_pushstr(answer, "%s", args->device_uuid);
-						zmsg_send(&answer, args->push_socket);
-					} break;
-				case MSG_ANSWER_PARSEERROR:
-				case MSG_ANSWER_BADCRC:
-					{
-						zmsg_t* answer = zmsg_dup(message);
-						if(ret == MSG_ANSWER_BADCRC) 
-							zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_BADCRC);
-						else
-							zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_PARSEERROR);
-						zmsg_pushstr(answer, "%s", msgid);
-						zmsg_pushstr(answer, "%s", args->device_uuid);
-						zmsg_send(&answer, args->push_socket);
-					} break;
-				case MSG_ANSWER_ACCEPTED:
-					{
-						zmsg_t* answer = zmsg_new();
-						zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_ACCEPTED);
-						zmsg_pushstr(answer, "%s", msgid);
-						zmsg_pushstr(answer, "%s", args->device_uuid);
-						zmsg_send(&answer, args->push_socket);
-					} break;
-			}
-		
-			ret = s_process_message(message);
+		debugLog("Received msg of len: %d bytes", (int)zmsg_content_size(message));
 
-			if(msgid)
-				free(msgid);
-			if(arguments) 
-				zmsg_destroy(&arguments);
-			if(message)
-				zmsg_destroy(&message);
-		} 
+		ret = s_parse_message(message, &msgid, &command, &arguments);
+		switch(ret) {
+			case MSG_ANSWER_UNREADABLE:
+				{
+					zmsg_t* answer = zmsg_dup(message);
+					zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UNREADABLE);
+					zmsg_pushstr(answer, "%032d", 0); /*  send a zeroed msgid */
+					zmsg_pushstr(answer, "%s", args->device_uuid);
+					zmsg_send(&answer, args->push_socket);
+				} break;
+			case MSG_ANSWER_PARSEERROR:
+			case MSG_ANSWER_BADCRC:
+				{
+					zmsg_t* answer = zmsg_dup(message);
+					if(ret == MSG_ANSWER_BADCRC) 
+						zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_BADCRC);
+					else
+						zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_PARSEERROR);
+					zmsg_pushstr(answer, "%s", msgid);
+					zmsg_pushstr(answer, "%s", args->device_uuid);
+					zmsg_send(&answer, args->push_socket);
+				} break;
+			case MSG_ANSWER_ACCEPTED:
+				{
+					zmsg_t* answer = zmsg_new();
+					zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_ACCEPTED);
+					zmsg_pushstr(answer, "%s", msgid);
+					zmsg_pushstr(answer, "%s", args->device_uuid);
+					zmsg_send(&answer, args->push_socket);
+
+					ret = s_process_message(args, command, arguments);
+					s_send_answer(args, ret, msgid, command, arguments);
+
+				} break;
+		}
+
+		if(msgid)
+			free(msgid);
+		if(arguments) 
+			zmsg_destroy(&arguments);
+		if(message)
+			zmsg_destroy(&message);
 	}
 
 	zsocket_destroy (zmq_ctx, args->sub_socket);
 	zsocket_destroy (zmq_ctx, args->push_socket);
 	zctx_destroy (&zmq_ctx);
 	config_destroy(args->cfg_ctx);
+
+	if(args->sub_endpoint) free(args->sub_endpoint);
+	if(args->push_endpoint) free(args->push_endpoint);
 	free(args);
 
 	exit(0);

@@ -11,6 +11,9 @@ import unittest
 """
 Test all the protocol configs, one by one.
 Victor Perron <victor.perron@locarise.com>
+
+TODO: Test the answer format. Maybe change its complexity ?
+
 """
 
 device_id = "8e9bf550554211e282fa1803731606fa"
@@ -27,7 +30,7 @@ print "#########################################################################
 print "#"
 print "#   Please run the following process BEFORE tests :"
 print "#"
-print "#   ../src/satan -s "+pub_endpoint+" -r "+pull_endpoint+" -u "+device_id
+print "#   ../src/satan -s "+pub_endpoint+" -p "+pull_endpoint+" -u "+device_id
 print "#"
 print "################################################################################"
 context = zmq.Context()
