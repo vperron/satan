@@ -69,7 +69,7 @@ void *zeromq_create_socket (zctx_t *context, char* endpoint, int type,
 		zsocket_connect (socket, "%s", _endp);
 		debugLog("Connected to zmq endpoint : %s",_endp);
 	} else {
-		zsocket_connect (socket, "%s", _endp);
+		zsocket_bind (socket, "%s", _endp);
 		debugLog("Bound to zmq endpoint : %s",_endp);
 	}
 	return socket;

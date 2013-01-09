@@ -152,3 +152,9 @@ Default value: 2
 * satan.subscribe.linger
 Linger to use on SUB socket.
 Default value: 0
+
+## License
+
+This code is the property of Victor Perron <victor@iso3103.net>, published as a collaboration material to a limited audience, and he has to be contacted in any case of duplication, modification, or use in any project.
+
+
