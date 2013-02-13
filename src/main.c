@@ -45,7 +45,9 @@
 #define CONF_ANSWER_ENDPOINT   "satan.answer.endpoint"
 #define CONF_ANSWER_HWM        "satan.answer.hwm"
 #define CONF_ANSWER_LINGER     "satan.answer.linger"
-#define CONF_DEVICE_UUID "device.info.uuid"
+
+#define CONF_PING_INTERVAL     "device.info.ping_interval"
+#define CONF_DEVICE_UUID       "device.info.thing_uid"
 
 #define MSG_COMMAND_STR_URLFIRM      "URLFIRM"
 #define MSG_COMMAND_STR_URLPAK       "URLPAK"
@@ -95,6 +97,7 @@
 #define SATAN_MSGID_LEN 16*2  /*  Libuuid's uuid len, converted to string */
 
 typedef struct _satan_args_t {
+	void* worker_pipe;
 	void *sub_socket;
 	char *sub_endpoint;
 	char *device_uuid; 
@@ -106,6 +109,8 @@ typedef struct _satan_args_t {
 	int req_hwm;
 	int req_linger;
 
+  int ping_interval;
+
 	config_context* cfg_ctx;
 } satan_args_t;
 
@@ -114,6 +119,11 @@ static void s_help(void)
 {
 	errorLog("Usage: satan [-u uuid] [-s SUB_ENDPOINT] [-p PUSH_ENDPOINT]\n");
 	exit(1);
+}
+
+static void s_int_handler(int foo)
+{
+	zctx_interrupted = true;
 }
 
 
@@ -427,10 +437,12 @@ static int s_apply_uciline(satan_args_t* args, zmsg_t* arguments, char** lasterr
 	if(snprintf(buffer,MAX_STRING_LEN,"%s.%s.%s=%s",pkg,section,prop,value) < 0)
 		goto s_apply_uciline_parseerror;
 
-	if(config_set(args->cfg_ctx,buffer) != STATUS_OK) 
+	if(config_set(args->cfg_ctx,buffer) != STATUS_OK) {
 		goto s_apply_uciline_ucierror;
-	if(config_commit(args->cfg_ctx,pkg) != STATUS_OK)
+  }
+	if(config_commit(args->cfg_ctx,pkg) != STATUS_OK) {
 		goto s_apply_uciline_ucierror;
+  }
 
 	/*  Execute the eventual daemons */
 	size = zmsg_size(arguments);
@@ -489,6 +501,9 @@ static int s_process_message(satan_args_t* args, uint8_t command, zmsg_t* argume
 		case MSG_COMMAND_UCILINE:
 				ret = s_apply_uciline(args, arguments,lasterror);
 				break;
+    case MSG_COMMAND_STATUS:
+        // ret = s_get_status(args, arguments, lasterror);
+        break;
 
 			/*  TODO: Implement the rest */
 	}
@@ -551,9 +566,87 @@ static int s_send_answer(satan_args_t* args, int code, char* msgid, char* laster
 	return STATUS_OK;
 }
 
+static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
+{
+	satan_args_t* args = (satan_args_t*)user_args;
+
+  int ret;
+  char* msgid;
+  uint8_t command;
+  zmsg_t* arguments;
+
+	uint64_t next_ping = -1;
+
+	if(args->ping_interval != -1)
+		next_ping = zclock_time() + args->ping_interval * 1000;
+
+	while (!zctx_interrupted) {
+
+		signal(SIGINT, s_int_handler);
+		signal(SIGQUIT, s_int_handler);
+
+		if(zclock_time() > next_ping) {
+			// TODO: ping
+			next_ping = zclock_time() + args->ping_interval * 1000;
+		}
+
+		if (zsocket_poll(pipe, 500)) {  // poll for 500 msecs
+      zmsg_t* message = zmsg_recv (pipe);
+      if(!message) continue;
+
+      debugLog("Received msg of len: %d bytes", (int)zmsg_content_size(message));
+
+      ret = s_parse_message(message, &msgid, &command, &arguments);
+      switch(ret) {
+        case MSG_ANSWER_UNREADABLE:
+          {
+            zmsg_t* answer = zmsg_dup(message);
+            zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UNREADABLE);
+            zmsg_pushstr(answer, "%032d", 0); /*  send a zeroed msgid */
+            zmsg_pushstr(answer, "%s", args->device_uuid);
+            zmsg_send(&answer, args->push_socket);
+          } break;
+        case MSG_ANSWER_PARSEERROR:
+        case MSG_ANSWER_BADCRC:
+          {
+            zmsg_t* answer = zmsg_dup(message);
+            if(ret == MSG_ANSWER_BADCRC) 
+              zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_BADCRC);
+            else
+              zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_PARSEERROR);
+            zmsg_pushstr(answer, "%s", msgid);
+            zmsg_pushstr(answer, "%s", args->device_uuid);
+            zmsg_send(&answer, args->push_socket);
+          } break;
+        case MSG_ANSWER_ACCEPTED:
+          {
+            char* lasterror = NULL;
+
+            zmsg_t* answer = zmsg_new();
+            zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_ACCEPTED);
+            zmsg_pushstr(answer, "%s", msgid);
+            zmsg_pushstr(answer, "%s", args->device_uuid);
+            zmsg_send(&answer, args->push_socket);
+
+            ret = s_process_message(args, command, arguments,&lasterror);
+            s_send_answer(args, ret, msgid, lasterror);
+
+          } break;
+      }
+
+      if(msgid)
+        free(msgid);
+      if(arguments) 
+        zmsg_destroy(&arguments);
+      if(message)
+        zmsg_destroy(&message);
+    }
+  }
+	args->worker_pipe = NULL;
+}
+
 int main(int argc, char *argv[])
 {
-	int ret;
 	satan_args_t* args = malloc(sizeof(satan_args_t));
 
 	memset(args,0,sizeof(args));
@@ -562,12 +655,15 @@ int main(int argc, char *argv[])
 
 	config_get_str(args->cfg_ctx,CONF_SUBSCRIBE_ENDPOINT,&args->sub_endpoint);
 	config_get_str(args->cfg_ctx,CONF_DEVICE_UUID,&args->device_uuid);
+
 	args->sub_hwm = config_get_int(args->cfg_ctx, CONF_SUBSCRIBE_HWM);
 	args->sub_linger = config_get_int(args->cfg_ctx, CONF_SUBSCRIBE_LINGER);
 
 	config_get_str(args->cfg_ctx,CONF_ANSWER_ENDPOINT,&args->push_endpoint);
 	args->req_hwm = config_get_int(args->cfg_ctx, CONF_ANSWER_HWM);
 	args->req_linger = config_get_int(args->cfg_ctx, CONF_ANSWER_LINGER);
+
+	args->ping_interval = config_get_int(args->cfg_ctx, CONF_PING_INTERVAL);
 	
 	s_handle_cmdline(args, argc, argv);
 
@@ -581,68 +677,27 @@ int main(int argc, char *argv[])
 	 *  It blocks on a full HWM, meaning "if too many messages in the queue"
 	 *  If we use a REQ socket, we will also have various issues while waiting 
 	 *  for our answers. Moreover, getting an ACK or not from the server changes
-	 *  NOTHING here. */
+	 *  NOTHING here. 
+   *  See in production tests what happens.
+   *  */
 	args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH, 
 			NULL, true, args->req_linger, args->req_hwm);
 	assert(args->push_socket != NULL);
 
+	/*  Create worker thread  */
+	args->worker_pipe = zthread_fork(zmq_ctx, s_worker_loop, args);
+
 	/*  Main listener loop */
 	while(!zctx_interrupted) {
-
-		char* msgid;
-		uint8_t command;
-		zmsg_t* arguments;
-
-		zmsg_t *message = zmsg_recv (args->sub_socket);
-
-		if(!message) continue;
-
-		debugLog("Received msg of len: %d bytes", (int)zmsg_content_size(message));
-
-		ret = s_parse_message(message, &msgid, &command, &arguments);
-		switch(ret) {
-			case MSG_ANSWER_UNREADABLE:
-				{
-					zmsg_t* answer = zmsg_dup(message);
-					zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UNREADABLE);
-					zmsg_pushstr(answer, "%032d", 0); /*  send a zeroed msgid */
-					zmsg_pushstr(answer, "%s", args->device_uuid);
-					zmsg_send(&answer, args->push_socket);
-				} break;
-			case MSG_ANSWER_PARSEERROR:
-			case MSG_ANSWER_BADCRC:
-				{
-					zmsg_t* answer = zmsg_dup(message);
-					if(ret == MSG_ANSWER_BADCRC) 
-						zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_BADCRC);
-					else
-						zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_PARSEERROR);
-					zmsg_pushstr(answer, "%s", msgid);
-					zmsg_pushstr(answer, "%s", args->device_uuid);
-					zmsg_send(&answer, args->push_socket);
-				} break;
-			case MSG_ANSWER_ACCEPTED:
-				{
-					char* lasterror = NULL;
-
-					zmsg_t* answer = zmsg_new();
-					zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_ACCEPTED);
-					zmsg_pushstr(answer, "%s", msgid);
-					zmsg_pushstr(answer, "%s", args->device_uuid);
-					zmsg_send(&answer, args->push_socket);
-
-					ret = s_process_message(args, command, arguments,&lasterror);
-					s_send_answer(args, ret, msgid, lasterror);
-
-				} break;
+		if (zsocket_poll(args->sub_socket, 1000)) { 
+			zmsg_t *message = zmsg_recv (args->sub_socket);
+			if(message){ 
+				if(args->worker_pipe)
+					zmsg_send(&message,args->worker_pipe);
+				else
+					break;
+			}
 		}
-
-		if(msgid)
-			free(msgid);
-		if(arguments) 
-			zmsg_destroy(&arguments);
-		if(message)
-			zmsg_destroy(&message);
 	}
 
 	zsocket_destroy (zmq_ctx, args->sub_socket);
@@ -650,8 +705,6 @@ int main(int argc, char *argv[])
 	zctx_destroy (&zmq_ctx);
 	config_destroy(args->cfg_ctx);
 
-	if(args->sub_endpoint) free(args->sub_endpoint);
-	if(args->push_endpoint) free(args->push_endpoint);
 	free(args);
 
 	exit(0);

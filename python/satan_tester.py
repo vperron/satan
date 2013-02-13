@@ -100,8 +100,8 @@ class TestProtocol(unittest.TestCase):
         and 'fooservice2' in /etc/init.d
         """
         msgid = gen_uuid()
-        send_msg(pub_socket, [device_id, msgid, "UCILINE", "device.info.uuid=aaaaa", 
-                              "fooservice1", "fooservice1"])
+        send_msg(pub_socket, [device_id, msgid, "UCILINE", "device.info.thing_uid=aaaaa", 
+                              "fooservice1", "fooservice2"])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
@@ -111,7 +111,7 @@ class TestProtocol(unittest.TestCase):
 
     def test_uciline_4(self):
         msgid = gen_uuid()
-        send_msg(pub_socket, [device_id, msgid, "UCILINE", "device.info.uuid=aaaaa", 
+        send_msg(pub_socket, [device_id, msgid, "UCILINE", "device.info.thing_uid=aaaaa", 
                               "caca", "fooservice1"])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
@@ -123,7 +123,7 @@ class TestProtocol(unittest.TestCase):
 
     def test_uciline_5(self):
         msgid = gen_uuid()
-        uciline = "foo.info.uuid=aaaaa"
+        uciline = "foo.info.thing_uid=aaaaa"
         send_msg(pub_socket, [device_id, msgid, "UCILINE", uciline])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
