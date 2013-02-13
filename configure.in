@@ -37,6 +37,21 @@ if test "x$lsd_search_libuci" = "xyes"; then
     fi
 fi
 
+# libjson-c 
+AC_ARG_WITH([libjsonc],
+            [AS_HELP_STRING([--with-libjsonc],
+						[Specify libjsonc prefix])],
+            [lsd_search_libjsonc="yes"],
+            [])
+if test "x$lsd_search_libjsonc" = "xyes"; then
+    if test -r "${with_libjsonc}/include/json-c/json.h"; then
+        CFLAGS="-I${with_libjsonc}/include ${CFLAGS}"
+        LDFLAGS="-L${with_libjsonc}/lib ${LDFLAGS}"
+    else
+        AC_MSG_ERROR([${with_libjsonc}/include/json-c/json.h not found. Please check libjsonc prefix])
+    fi
+fi
+
 # libczmq 
 AC_ARG_WITH([libczmq],
             [AS_HELP_STRING([--with-libczmq],
@@ -142,6 +157,9 @@ AC_CHECK_LIB(czmq, zctx_new, [LIBS="-lczmq $LIBS"],
 															 [AC_MSG_ERROR([cannot link with -lczmq, install libcczmq.])]
 															 )
 
+AC_CHECK_LIB(json-c, json_object_get, [LIBS="-ljson-c $LIBS"],
+															 [AC_MSG_ERROR([cannot link with -ljson-c, install libjson-c.])]
+															 )
 # Checks for header files.
 AC_HEADER_STDC
 AC_HEADER_STDBOOL
@@ -156,7 +174,7 @@ AC_C_VOLATILE
 
 # These options are GNU compiler specific.
 if test "x$GCC" = "xyes"; then
-    CFLAGS="-fPIC -Wno-unused-function ${CFLAGS}"
+    CFLAGS="-fPIC -Wno-unused-function -Wno-unused-variable ${CFLAGS}"
 		LDFLAGS="-fPIC ${LDFLAGS}"
 fi
 AC_SUBST(CFLAGS)

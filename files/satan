@@ -1,8 +1,12 @@
 config section 'subscribe'
-	option endpoint 'tcp://192.168.1.15:10080'
+	option endpoint 'tcp://api.locarise.com:10100'
 	option linger '0'
 	option hwm '100'
 
 config option 'answer'
-	option endpoint 'tcp://192.168.1.15:10081'
+	option endpoint 'tcp://api.locarise.com:10101'
 
+config section 'hermes'
+	option endpoint 'tcp://localhost:10080'
+	option hwm '1000'
+	option linger '0'

@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <czmq.h>
 #include <stdarg.h>
+#include <json/json.h>
 
 #include "main.h"
 #include "config.h"
@@ -45,6 +46,11 @@
 #define CONF_ANSWER_ENDPOINT   "satan.answer.endpoint"
 #define CONF_ANSWER_HWM        "satan.answer.hwm"
 #define CONF_ANSWER_LINGER     "satan.answer.linger"
+
+#define CONF_HERMES_ENDPOINT   "snow.hermes.endpoint"
+#define CONF_HERMES_HWM        "snow.hermes.hwm"
+#define CONF_HERMES_LINGER     "snow.hermes.linger"
+
 
 #define CONF_PING_INTERVAL     "device.info.ping_interval"
 #define CONF_DEVICE_UUID       "device.info.thing_uid"
@@ -98,6 +104,7 @@
 
 typedef struct _satan_args_t {
 	void* worker_pipe;
+	void *hermes_socket;
 	void *sub_socket;
 	char *sub_endpoint;
 	char *device_uuid; 
@@ -109,6 +116,10 @@ typedef struct _satan_args_t {
 	int req_hwm;
 	int req_linger;
 
+	char *hermes_endpoint;
+	int hermes_hwm;
+	int hermes_linger;
+
   int ping_interval;
 
 	config_context* cfg_ctx;
@@ -117,7 +128,7 @@ typedef struct _satan_args_t {
 
 static void s_help(void)
 {
-	errorLog("Usage: satan [-u uuid] [-s SUB_ENDPOINT] [-p PUSH_ENDPOINT]\n");
+	errorLog("Usage: satan [-u uuid] [-l HERMES_ENDPOINT] [-s SUB_ENDPOINT] [-p PUSH_ENDPOINT]\n");
 	exit(1);
 }
 
@@ -136,6 +147,14 @@ static void s_handle_cmdline(satan_args_t* args, int argc, char** argv) {
 				if(flags+2<argc) {
 					flags++;
 					args->sub_endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
+				} else {
+					errorLog("Error: Please specify a valid endpoint !");
+				}
+				break;
+			case 'l': 
+				if(flags+2<argc) {
+					flags++;
+					args->hermes_endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
 				} else {
 					errorLog("Error: Please specify a valid endpoint !");
 				}
@@ -502,6 +521,7 @@ static int s_process_message(satan_args_t* args, uint8_t command, zmsg_t* argume
 				ret = s_apply_uciline(args, arguments,lasterror);
 				break;
     case MSG_COMMAND_STATUS:
+        // TODO: Implement status commands
         // ret = s_get_status(args, arguments, lasterror);
         break;
 
@@ -566,6 +586,57 @@ static int s_send_answer(satan_args_t* args, int code, char* msgid, char* laster
 	return STATUS_OK;
 }
 
+static int s_hermes_send(void* socket, bool status) 
+{
+	json_object *json;
+	struct timeval tv;
+	struct tm *tm;
+	char formatted_date0[MAX_STRING_LEN];
+	char formatted_date1[MAX_STRING_LEN];
+	char timezone[7];
+	char* json_string = NULL;
+
+	assert(socket);
+
+	gettimeofday(&tv, NULL);
+	tm = localtime(&tv.tv_sec);
+	assert(tm);
+
+	strftime(formatted_date0, MAX_STRING_LEN, "%Y-%m-%d %H:%M:%S.%%03u%%s", tm);
+	if(strftime(timezone, 7, "%z", tm) != 0) {
+		timezone[6] = '\0';
+		timezone[5] = timezone[4];
+		timezone[4] = timezone[3];
+		timezone[3] = ':';
+		snprintf(formatted_date1,MAX_STRING_LEN, formatted_date0, tv.tv_usec/1000, timezone);
+	} else {
+		snprintf(formatted_date1,MAX_STRING_LEN, formatted_date0, tv.tv_usec/1000, "");
+	}
+
+	json = json_object_new_object();
+
+	json_object_object_add(json, "ts", json_object_new_string(formatted_date1));
+	json_object_object_add(json, "v", json_object_new_boolean(status));
+
+	json_string = strdup((char*)json_object_to_json_string_ext(json, JSON_C_TO_STRING_PLAIN));
+
+	json_object_object_foreach(json, key0, val0) {
+		void* _val0 = &val0; // avoid warning
+		json_object_object_del(json, key0);
+	}
+	json_object_put(json);
+
+	if(json_string != NULL) {
+		zmsg_t* msg = zmsg_new();
+		zmsg_addstr (msg, "%s", json_string);
+		zmsg_send (&msg, socket);
+		free(json_string);
+		return STATUS_OK;
+	}
+
+	return STATUS_ERROR;
+}
+
 static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
 {
 	satan_args_t* args = (satan_args_t*)user_args;
@@ -586,7 +657,7 @@ static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
 		signal(SIGQUIT, s_int_handler);
 
 		if(zclock_time() > next_ping) {
-			// TODO: ping
+      s_hermes_send(args->hermes_socket, true);
 			next_ping = zclock_time() + args->ping_interval * 1000;
 		}
 
@@ -663,11 +734,19 @@ int main(int argc, char *argv[])
 	args->req_hwm = config_get_int(args->cfg_ctx, CONF_ANSWER_HWM);
 	args->req_linger = config_get_int(args->cfg_ctx, CONF_ANSWER_LINGER);
 
+	config_get_str(args->cfg_ctx,CONF_HERMES_ENDPOINT,&args->hermes_endpoint);
+	args->hermes_hwm = config_get_int(args->cfg_ctx, CONF_HERMES_HWM);
+	args->hermes_linger = config_get_int(args->cfg_ctx, CONF_HERMES_LINGER);
+
 	args->ping_interval = config_get_int(args->cfg_ctx, CONF_PING_INTERVAL);
 	
 	s_handle_cmdline(args, argc, argv);
 
 	zctx_t *zmq_ctx = zctx_new ();
+
+	args->hermes_socket = zeromq_create_socket(zmq_ctx, args->hermes_endpoint, ZMQ_PUSH,
+			NULL, true, args->hermes_linger, args->hermes_hwm);
+	assert(args->hermes_socket != NULL);
 
 	args->sub_socket = zeromq_create_socket(zmq_ctx, args->sub_endpoint, ZMQ_SUB,
 			args->device_uuid, true, args->sub_linger, args->sub_hwm);
