@@ -47,9 +47,9 @@
 #define CONF_ANSWER_HWM        "satan.answer.hwm"
 #define CONF_ANSWER_LINGER     "satan.answer.linger"
 
-#define CONF_HERMES_ENDPOINT   "snow.hermes.endpoint"
-#define CONF_HERMES_HWM        "snow.hermes.hwm"
-#define CONF_HERMES_LINGER     "snow.hermes.linger"
+#define CONF_HERMES_ENDPOINT   "satan.hermes.endpoint"
+#define CONF_HERMES_HWM        "satan.hermes.hwm"
+#define CONF_HERMES_LINGER     "satan.hermes.linger"
 
 
 #define CONF_PING_INTERVAL     "device.info.ping_interval"
