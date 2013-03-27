@@ -18,7 +18,7 @@ If you want to run a single test, run:
 
 """
 
-device_id = "8e9bf550554211e282fa1803731606fa"
+device_id = "testtesttesttesttesttesttesttest"
 pub_endpoint = "tcp://localhost:10080"
 pull_endpoint = "tcp://localhost:10081"
 with open("/dev/urandom") as f:
@@ -32,7 +32,7 @@ print "#########################################################################
 print "#"
 print "#   Please run the following process BEFORE tests :"
 print "#"
-print "#   ../src/satan -s "+pub_endpoint+" -p "+pull_endpoint+" -u "+device_id
+print "#   satan -s "+pub_endpoint+" -p "+pull_endpoint+" -u "+device_id
 print "#"
 print "################################################################################"
 context = zmq.Context()
@@ -54,7 +54,7 @@ def send_msg(socket,msg):
     socket.send_multipart(msg)
 
 def gen_uuid():
-    return uuid.uuid1().hex
+    return uuid.uuid4().hex
 
 
 class TestProtocol(unittest.TestCase):
