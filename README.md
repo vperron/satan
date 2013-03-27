@@ -1,12 +1,19 @@
 # satan
 
-*satan* is the daemon responsible of configuration updates and remote upgrade of the boxes.
-Needless to say, that particular piece of software has to be particularly stable.
-It has life and death rights over [grideye](https://github.com/vperron/grideye) and [snow](https://github.com/vperron/snow) daemons, and can also trigger a full firmware update.
+*satan* is a lightweight, NAT-traversing remote management tool for OpenWRT. Following the [KISS](http://en.wikipedia.org/wiki/KISS_principle) principle, it uses a very simple text-based grammar, so writing a remote control tool or collection of scripts should be really straightforward.
 
-It receives its configuration via an always-connected, dynamic and NAT-traversing zeromq connection to Locarise servers.
+*satan* has been released after many painful and unsuccessful attempts to manage easily and in a "2.0" fashion remote OpenWRT devices. Especially server-side, there are little to no free, well-maintained, or even just easy-to-implement TR-69/Device:2/CWMP/OMA-DM/SNMP solutions that were satisfying.
+
+The messaging protocol uses the latest awesome [ZMQ3](http://www.zeromq.org/) protocol to reliabily receive PUSH notifications from the remote server and send it back appropriate answers.
+
+Designed for stability, each part of *satan* is also rigorously tested.
 
 ## Architecture
+
+*satan* [UCI](http://wiki.openwrt.org/doc/uci) configuration file lets you define two ZeroMQ endpoints:
+
+* a SUBSCRIBE socket which will enable PUSH notifications from server to be received
+* a PUSH socket to send any kind of information back.
 
 *satan* is responsible for and able to:
 
@@ -15,11 +22,8 @@ It receives its configuration via an always-connected, dynamic and NAT-traversin
 * Update a package
 * Update the whole firmware
 * Execute a shell script
-* Report device status
 
-For this, *satan* receives commands from a _zeromq_ SUBSCRIBE socket, on its device-specific `device.info.uuid` channel.
-
-Each command has to be acknowledged or answered by *satan* on its REQ upstream socket.
+Each command is prefixed by the remote device uuid and a message id, so that both the server and the device know who it is talking to / receiving answers from / which message is being answered. 
 
 Those commands are represented in the following [ABNF](http://www.ietf.org/rfc/rfc2234.txt) grammar [D stands for device, S for server] :
 
@@ -43,7 +47,7 @@ binfile   = 'BINFILE'   binary destpath
 binscript = 'BINSCRIPT' binary
 
 uciline   = 'UCILINE'   optionname'='optionvalue *executable
-status    = 'STATUS'
+discover  = 'DISCOVER'
 ```
 
 * `uuid` is the private device uuid to address to
@@ -57,22 +61,18 @@ status    = 'STATUS'
 * `optionname` the UCI option name to update
 * `optionvalue` the UCI option value to be set.
 
-
-
 ```
 D:satan-req = uuid msgid answer | uuid zeromsgid "UNREADABLE" originalmsg
 
 answer  = ( "ACCEPTED" / 
 						"COMPLETED" /
-						status /
 						"BADCRC" /
+						"HELLO" /
 						brokenurl /
 						parseerror /
 						execerror /
 						ucierror /
 						undeferror
-
-status     = "STATUS" fullstatus
 
 brokenurl  = "BROKENURL" httpurl
 parseerror = "PARSEERROR"
@@ -86,24 +86,9 @@ to read up to the message id, we send it back with a zeroed `msgid`.
 
 Note that the device may send:
 * `ACCEPTED` in a first round, to notify the server that the message had an acceptable format
-* `COMPLETED` as soon as the operation is finished; `COMPLETED` makes no sense in two cases:
-** `STATUS` request, the completeness is the answer itself
-** Firmware updates, obviously keeping the message id before and after is not that necessary.
-
-In turn, the device will wait for a last ACK from the server.
-
-```
-S:satan-rep = uuid msgid "OK"
-```
-
-### Device status
-
-`fullstatus` stated above SHALL contain, and is not limited to:
-
-* the memory state of the device ( `cat /proc/meminfo` )
-* the current load snapshot of the device ( `top -n 2` )
-* the current active processes ( `ps` ) 
-* the disk space occupancy ( `df` )
+* `COMPLETED` as soon as the operation is finished; however `COMPLETED` makes no much sense in two cases:
+** `DISCOVER` requests, the completeness is a simple HELLO.
+** Successful firmware update requests....
 
 ## Compile
 
@@ -156,5 +141,3 @@ Default value: 0
 ## License
 
 This code is the property of Victor Perron <victor@iso3103.net>, published as a collaboration material to a limited audience, and he has to be contacted in any case of duplication, modification, or use in any project.
-
-
