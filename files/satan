@@ -1,3 +1,7 @@
+config section 'info'
+	option thing_uid 'FOO_UID'
+  option ping_interval 120
+
 config section 'subscribe'
 	option endpoint 'tcp://api.locarise.com:10100'
 	option linger '0'
@@ -5,8 +9,3 @@ config section 'subscribe'
 
 config option 'answer'
 	option endpoint 'tcp://api.locarise.com:10101'
-
-config section 'hermes'
-	option endpoint 'tcp://localhost:10080'
-	option hwm '1000'
-	option linger '0'
