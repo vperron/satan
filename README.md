@@ -76,31 +76,33 @@ discover  = 'DISCOVER'
 ```
 D:satan-req = uuid msgid answer | uuid zeroedmsgid "UNREADABLE" originalmsg
 
-answer  = ( "ACCEPTED" / 
-						"COMPLETED" /
-						"BADCRC" /
-						"HELLO" /
-						"CMDOUTPUT" /
+answer  = ( "MSGACCEPTED" / 
+						"MSGCOMPLETED" /
+						"MSGBADCRC" /
+						"MSGHELLO" /
+						"MSGCMDOUTPUT" /
+						"MSGPENDING" /
 						brokenurl /
 						parseerror /
 						execerror /
 						ucierror /
 						undeferror
 
-brokenurl  = "BROKENURL" httpurl
-parseerror = "PARSEERROR"
-execerror  = "EXECERROR" ( package / executable / script )
-ucierror   = "UCIERROR" optionname
-undeferror = "UNDEFERROR" 
+brokenurl  = "MSGBROKENURL" httpurl
+parseerror = "MSGPARSEERROR"
+execerror  = "MSGEXECERROR" ( package / executable / script )
+ucierror   = "MSGUCIERROR" optionname
+undeferror = "MSGUNDEFERROR" 
 ```
 
 There above, bote that if a message is _HEAVILY_ unreadable -meaning we did not even succeed
 to read up to the message id, we send it back with a zeroed `msgid`.
 
 Note that the device may send:
-* `ACCEPTED` in a first round, to notify the server that the message had an acceptable format
-* `CMDOUTPUT` to notify the server of additional output the command may generate
-* `COMPLETED` as soon as the operation is finished; however `COMPLETED` makes no much sense in two cases:
+* `MSGACCEPTED` in a first round, to notify the server that the message had an acceptable format
+* `MSGPENDING` is used to signal that the message was the source of a time-consuming operation that may finish later on.
+* `MSGCMDOUTPUT` to notify the server of additional output the command may generate
+* `MSGCOMPLETED` as soon as the operation is finished; however `COMPLETED` makes no much sense in two cases:
 ** `DISCOVER` requests, the completeness is a simple HELLO.
 ** Successful firmware update requests....
 

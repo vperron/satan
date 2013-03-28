@@ -84,6 +84,7 @@
 #define MSG_ANSWER_STR_UCIERROR      "MSGUCIERROR"
 #define MSG_ANSWER_STR_UNDEFERROR    "MSGUNDEFERROR"
 #define MSG_ANSWER_STR_CMDOUTPUT     "MSGCMDOUTPUT"
+#define MSG_ANSWER_STR_PENDING       "MSGPENDING"
 
 #define MSG_ANSWER_ACCEPTED      0x01
 #define MSG_ANSWER_CMDOUTPUT     0x40
@@ -95,6 +96,7 @@
 #define MSG_ANSWER_EXECERROR     0x0C
 #define MSG_ANSWER_UCIERROR      0x10
 #define MSG_ANSWER_UNDEFERROR    0x20
+#define MSG_ANSWER_PENDING       0xC0
 
 #define SATAN_CHECKSUM_SIZE 4
 #define SATAN_FIRM_OPTIONS_LEN 4
@@ -103,6 +105,7 @@
 
 typedef struct _satan_args_t {
 	void* worker_pipe;
+	void* child_supervision_pipe;
 	void *sub_socket;
 	char *sub_endpoint;
 	char *device_uuid; 
@@ -223,6 +226,14 @@ static int s_send_answer(satan_args_t* args, int code, char* msgid, char* laster
 				zmsg_t* answer = zmsg_new();
 				zmsg_pushstr(answer, "%s", lasterror);
 				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UCIERROR);
+				zmsg_pushstr(answer, "%s", msgid);
+				zmsg_pushstr(answer, "%s", args->device_uuid);
+				zmsg_send(&answer, args->push_socket);
+			} break;
+		case MSG_ANSWER_PENDING:
+			{
+				zmsg_t* answer = zmsg_new();
+				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_PENDING);
 				zmsg_pushstr(answer, "%s", msgid);
 				zmsg_pushstr(answer, "%s", args->device_uuid);
 				zmsg_send(&answer, args->push_socket);
@@ -522,11 +533,15 @@ static int s_exec_report_stdout(satan_args_t* args, char* msgid, char* cmd)
     zctx_destroy (&zmq_ctx);
 		exit(0);
 	}
+
 	if(process_id>0) {
-		ret = wait(&sig) == -1 ? STATUS_ERROR : STATUS_OK;
-		if(ret == STATUS_OK) {
-			ret = WEXITSTATUS(sig) == 0 ? STATUS_OK : STATUS_ERROR;
-		}
+    zmsg_t* pidmsg = zmsg_new();
+    zframe_t *frame = zframe_new(&process_id, sizeof(pid_t));
+    zmsg_push(pidmsg, frame);
+    zmsg_pushstr(pidmsg, "%s", cmd);
+    zmsg_pushstr(pidmsg, "%s", msgid);
+    zmsg_send(&pidmsg, args->child_supervision_pipe);
+    ret = STATUS_OK;
 	}
 
 	return ret;
@@ -559,7 +574,7 @@ static int s_apply_command(satan_args_t* args, char* msgid, zmsg_t* arguments, c
 		*lasterror = NULL;
 	}
 
-	ret = MSG_ANSWER_COMPLETED;
+	ret = MSG_ANSWER_PENDING;
 
 s_apply_command_end:
 	if(param)
@@ -694,6 +709,67 @@ static int s_process_message(satan_args_t* args, char* msgid, uint8_t command, z
 	return ret;
 }
 
+#define MAX_PROCESS_IDS 256
+
+static void s_child_supervision_loop (void *user_args, zctx_t *ctx, void *pipe)
+{
+  
+  typedef struct s_pid_msg_t {
+    pid_t pid;
+    char* msgid;
+    char* command;
+  } pid_msg;
+
+  char* msgid;
+  char* command;
+  int status;
+	satan_args_t* args = (satan_args_t*)user_args;
+  pid_msg* item = NULL;
+  zlist_t* process_ids = zlist_new();
+
+	while (!zctx_interrupted) {
+		signal(SIGINT, s_int_handler);
+		signal(SIGQUIT, s_int_handler);
+
+    item = zlist_first(process_ids);
+    while(item != NULL) {
+      if (waitpid(item->pid, &status, WNOHANG) != 0) {
+        zmsg_t* answer = zmsg_new();
+        zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_COMPLETED);
+        zmsg_pushstr(answer, "%s", item->msgid);
+        zmsg_pushstr(answer, "%s", args->device_uuid);
+        zmsg_send(&answer, args->push_socket);
+        free(item->msgid);
+        free(item->command);
+        zlist_remove(process_ids, item);
+        free(item);
+      }
+      item = zlist_next(process_ids);
+    }
+
+		if (zsocket_poll(pipe, 1000)) {  // poll for 1s
+      zmsg_t* message = zmsg_recv (pipe);
+      if(!message) continue;
+
+	    msgid = zmsg_popstr(message); 
+	    command = zmsg_popstr(message); 
+	    zframe_t* pidframe = zmsg_pop(message);
+	    pid_t pid = get32bits(zframe_data(pidframe));
+      item = malloc(sizeof(pid_msg));
+      item->pid = pid;
+      item->msgid = strdup(msgid);
+      item->command = strdup(command);
+      zlist_append(process_ids, item);
+
+      zframe_destroy(&pidframe);
+      free(msgid);
+
+      if(message)
+        zmsg_destroy(&message);
+    }
+  }
+	args->child_supervision_pipe = NULL;
+}
 
 static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
 {
@@ -815,6 +891,9 @@ int main(int argc, char *argv[])
 
 	/*  Create worker thread  */
 	args->worker_pipe = zthread_fork(zmq_ctx, s_worker_loop, args);
+
+  /*  Create child supervision thread */
+	args->child_supervision_pipe = zthread_fork(zmq_ctx, s_child_supervision_loop, args);
 
 	/*  Main listener loop */
 	while(!zctx_interrupted) {
