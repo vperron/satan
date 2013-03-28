@@ -2,11 +2,11 @@
  * =====================================================================================
  *
  *   @file main.h
- *   @author Victor Perron (), victor.perron@locarise.com
+ *   @author Victor Perron (), victor@iso3103.net
  *   
  *        Version:  1.0
  *        Created:  09/20/2012 08:26:35 PM
- *        Company:  Locarise
+ *        
  *
  *   @section DESCRIPTION
  *

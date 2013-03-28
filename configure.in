@@ -6,7 +6,7 @@ AC_PREREQ(2.61)
 # The version in git should reflect the *next* version planned.
 # Version must be MAJOR.MINOR.PATCH otherwise things will break.
 #
-AC_INIT([satan],[0.2.1],[victor.perron@locarise.com])
+AC_INIT([satan],[0.1.0],[victor@iso3103.net])
 
 AC_CONFIG_AUX_DIR(config)
 AC_CONFIG_MACRO_DIR(config)

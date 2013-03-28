@@ -2,11 +2,11 @@
  * =====================================================================================
  *
  *   @file superfasthash.h
- *   @author Victor Perron (), victor.perron@locarise.com
+ *   @author Victor Perron (), victor@iso3103.net
  *   
  *        Version:  1.0
  *        Created:  01/03/2013 06:14:32 PM
- *        Company:  Locarise
+ *        
  *
  *   @section DESCRIPTION
  *

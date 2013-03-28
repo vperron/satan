@@ -10,7 +10,7 @@ import unittest
 
 """
 Test all the protocol configs, one by one.
-Victor Perron <victor.perron@locarise.com>
+Victor Perron <victor@iso3103.net>
 
 If you want to run a single test, run:
 
