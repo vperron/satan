@@ -10,11 +10,11 @@
  *
  *   @section DESCRIPTION
  *
- *       Zeromq routines
+ *       Zeromq helper routines
  *       
  *   @section LICENSE
  *
- *       
+ *      http://www.gnu.org/licenses/lgpl.html 
  *
  * =====================================================================================
  */

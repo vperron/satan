@@ -363,6 +363,39 @@ class TestProtocol(unittest.TestCase):
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGPARSEERROR')
 
+    def test_command_0(self):
+        msgid = gen_uuid()
+        send_msg(pub_socket, [device_id, msgid, "COMMAND"])
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGPARSEERROR')
+    def test_command_1(self):
+        msgid = gen_uuid()
+        send_msg(pub_socket, [device_id, msgid, "COMMAND", "stuff there and there"])
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
+    def test_command_2(self):
+        msgid = gen_uuid()
+        send_msg(pub_socket, [device_id, msgid, "COMMAND", "testme", "stupid"])
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGPARSEERROR')
+    def test_command_3(self):
+        msgid = gen_uuid()
+        send_msg(pub_socket, [device_id, msgid, "COMMAND", "echo machin"])
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGCMDOUTPUT')
+        self.assertEqual(ans[3], 'machin\n')
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGCOMPLETED')
+
 
 if __name__ == '__main__':
     unittest.main()

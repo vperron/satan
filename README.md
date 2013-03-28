@@ -36,6 +36,8 @@ command =  ( urlfirm / binfirm /
 						urlfile / binfile /
 						uciline / status )
 
+command   = 'COMMAND'   command
+
 urlfirm   = 'URLFIRM'   httpurl upgradeoptions
 urlpak    = 'URLPAK'    httpurl *executable
 urlfile   = 'URLFILE'   httpurl destpath
@@ -60,6 +62,7 @@ discover  = 'DISCOVER'
 * `destpath` is the destination file where to copy the new one
 * `optionname` the UCI option name to update
 * `optionvalue` the UCI option value to be set.
+* `command` is a string (with spaces, line feeds, anything that fits into a ZMQ message part)
 
 ```
 D:satan-req = uuid msgid answer | uuid zeromsgid "UNREADABLE" originalmsg
@@ -68,6 +71,7 @@ answer  = ( "ACCEPTED" /
 						"COMPLETED" /
 						"BADCRC" /
 						"HELLO" /
+						"CMDOUTPUT" /
 						brokenurl /
 						parseerror /
 						execerror /
