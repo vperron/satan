@@ -316,8 +316,8 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 
 	/*  Pop off the checksum from arguments before returning */
 	zmsg_remove(_arguments, zmsg_last(_arguments));
-
 	*arguments = zmsg_dup(_arguments);
+
 	ret = MSG_ANSWER_ACCEPTED;
 
 s_parse_finish: /*  Free everything */
@@ -593,6 +593,7 @@ static void s_child_supervision_loop (void *user_args, zctx_t *ctx, void *pipe)
         zmsg_destroy(&message);
     }
   }
+  zlist_destroy(&process_ids);
 	args->child_supervision_pipe = NULL;
 }
 
@@ -648,8 +649,11 @@ static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
             zmsg_pushstr(answer, "%s", args->device_uuid);
             zmsg_send(&answer, args->push_socket);
 
-            ret = s_process_message(args, msgid, command, arguments,&lasterror);
+            ret = s_process_message(args, msgid, command, arguments, &lasterror);
             s_send_answer(args, ret, msgid, lasterror);
+
+            if(lasterror)
+              free(lasterror);
 
           } break;
       }
