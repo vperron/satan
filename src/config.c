@@ -14,7 +14,9 @@
  *       
  *   @section LICENSE
  *
- *   This code is borrowed and greatly adapted from uci CLI tool itself 
+ *      LGPL http://www.gnu.org/licenses/lgpl.html 
+ *
+ *   This code is borrowed and adapted from uci CLI tool itself 
  *   from nbd (Felix Fietkau)
  *       
  *

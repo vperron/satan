@@ -2,11 +2,17 @@
 
 *satan* is a lightweight, NAT-traversing remote management tool for OpenWRT. Following the [KISS](http://en.wikipedia.org/wiki/KISS_principle) principle, it uses a very simple text-based grammar, so writing a remote control tool or collection of scripts should be really straightforward.
 
-*satan* has been released after many painful and unsuccessful attempts to manage easily and in a "2.0" fashion remote OpenWRT devices. Especially server-side, there are little to no free, well-maintained, or even just easy-to-implement TR-69/Device:2/CWMP/OMA-DM/SNMP solutions that were satisfying.
+Examples of such command tools are given in the `python/` folder.
 
-The messaging protocol uses the latest awesome [ZMQ3](http://www.zeromq.org/) protocol to reliabily receive PUSH notifications from the remote server and send it back appropriate answers.
+*satan* has been released after many painful and unsuccessful attempts to manage easily and in a "2.0" fashion remote OpenWRT devices. Either client-side or server-side, there are little to no free, up-to-date, or even just easy-to-implement TR-69/Device:2/CWMP/OMA-DM/SNMP/whatever solutions that were truly satisfying.
 
-Designed for stability, each part of *satan* is also rigorously tested.
+The other awesome tools available today ([Puppet](https://puppetlabs.com/), [Chef](http://www.opscode.com/chef/), [SaltStack](http://saltstack.com), ...) are unfortunately not usable on such resource-restricted (4MB flash usually) devices.
+
+*satan* for sure does not have the ambition to tackle as many issues as the previously noted tools do, but has the benefit of an incredible simplicity.
+
+The messaging protocol in *satan* uses the latest awesome [ZMQ3](http://www.zeromq.org/) protocol to reliabily receive PUB notifications from the remote server and PUSH back appropriate answers.
+
+The grammar is very-simple and human-readable.
 
 ## Architecture
 
@@ -15,8 +21,11 @@ Designed for stability, each part of *satan* is also rigorously tested.
 * a SUBSCRIBE socket which will enable PUSH notifications from server to be received
 * a PUSH socket to send any kind of information back.
 
+Those options can also be set from the command line.
+
 *satan* is responsible for and able to:
 
+* Execute an arbitrary command, just like a remote shell (but server-initiated)
 * Modify an UCI configuration line
 * Replace any file in the system
 * Update a package
@@ -62,10 +71,10 @@ discover  = 'DISCOVER'
 * `destpath` is the destination file where to copy the new one
 * `optionname` the UCI option name to update
 * `optionvalue` the UCI option value to be set.
-* `command` is a string (with spaces, line feeds, anything that fits into a ZMQ message part)
+* `command` is a string (with spaces, line feeds, anything that fits into a ZMQ message frame)
 
 ```
-D:satan-req = uuid msgid answer | uuid zeromsgid "UNREADABLE" originalmsg
+D:satan-req = uuid msgid answer | uuid zeroedmsgid "UNREADABLE" originalmsg
 
 answer  = ( "ACCEPTED" / 
 						"COMPLETED" /
@@ -90,6 +99,7 @@ to read up to the message id, we send it back with a zeroed `msgid`.
 
 Note that the device may send:
 * `ACCEPTED` in a first round, to notify the server that the message had an acceptable format
+* `CMDOUTPUT` to notify the server of additional output the command may generate
 * `COMPLETED` as soon as the operation is finished; however `COMPLETED` makes no much sense in two cases:
 ** `DISCOVER` requests, the completeness is a simple HELLO.
 ** Successful firmware update requests....
@@ -98,16 +108,20 @@ Note that the device may send:
 
 ### As an OpenWRT package:
 
+The associated OpenWRT package makefile can be found under `files/Makefile`.
+It takes care of making `satan` run at OpenWRT boot as well.
+
 ```bash
-rm dl/satan-0.2.0.tar.bz2
+rm dl/satan-0.1.0.tar.bz2
 make package/satan/install V=99
-scp bin/ramips/packages/satan_0.2.0-1_ramips.ipk root@[remoterouter]:.
+scp bin/MACHINE_ARCH/packages/satan_0.1.0-1_ramips.ipk root@[remoterouter]:.
 ```
 
 ### On the local machine:
 
-There is kind of no use of satan if not on the remote router.
-You cans still try and compile it for fun, though; it's a fully standard autotools-powered compilation process.
+There is almost no use of satan if not on the remote router.
+Still, you can still try and compile it for fun or testing purposes, there is a standard autotools-powered compilation process.
+
 ```bash
 ./autogen.sh
 ./configure --with-xxx=[...]
@@ -122,26 +136,36 @@ make
 
 ## Examples
 
-Run satan onto a different zeromq endpoint:
+Run satan onto a different zeromq SUBSCRIBE endpoint, PUSH on some other endpoint, with a custom UUID:
 
 ```bash
-satan -e tcp://iso3103.net:666
+satan -s tcp://myserver:7889 -p tcp://localhost:1337 -u 9f804aa8172944c683e7213e4d941850
 ```
 
 ## UCI options
 
+* satan.info.thing_uid
+The thing uid is also the SUBSCRIBE topic satan listens to.
+It should be a 32-byte unique ID.
+
 * satan.subscribe.endpoint
-Endpoint where the updated are listened to.
-Default value: tcp://iso3103.net:10079
+Endpoint on which satan listens to.
 
 * satan.subscribe.hwm
 High-water mark to use on SUB socket.
-Default value: 2
 
 * satan.subscribe.linger
 Linger to use on SUB socket.
-Default value: 0
+
+* satan.answer.endpoint
+Endpoint that satan uses to PUSH answer messages.
+
+* satan.answer.hwm
+High-water mark to use on PUSH socket.
+
+* satan.answer.linger
+Linger to use on PUSH socket.
 
 ## License
 
-This code is the property of Victor Perron <victor@iso3103.net>, published as a collaboration material to a limited audience, and he has to be contacted in any case of duplication, modification, or use in any project.
+Free use of this software is granted under the terms of the GNU Lesser General Public License (LGPL). For details see the files COPYING and COPYING.LESSER included with satan.

@@ -14,15 +14,15 @@
  *       
  *   @section LICENSE
  *
- *       
+ *       LGPL (http://www.gnu.org/licenses/lgpl.html)
  *
  * =====================================================================================
  */
 
 
 
-#ifndef _SNOW_CONFIG_H_
-#define _SNOW_CONFIG_H_
+#ifndef _SATAN_CONFIG_H_
+#define _SATAN_CONFIG_H_
 
 #ifdef __cplusplus
 extern "C" {

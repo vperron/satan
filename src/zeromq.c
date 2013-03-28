@@ -14,7 +14,7 @@
  *       
  *   @section LICENSE
  *
- *      http://www.gnu.org/licenses/lgpl.html 
+ *      LGPL http://www.gnu.org/licenses/lgpl.html 
  *
  * =====================================================================================
  */

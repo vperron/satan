@@ -1,11 +1,10 @@
 config section 'info'
-	option thing_uid 'FOO_UID'
-  option ping_interval 120
+	option thing_uid 'testtesttesttesttesttesttesttest'
 
 config section 'subscribe'
-	option endpoint 'tcp://api.locarise.com:10100'
+	option endpoint 'tcp://localhost:10080'
 	option linger '0'
 	option hwm '100'
 
 config option 'answer'
-	option endpoint 'tcp://api.locarise.com:10101'
+	option endpoint 'tcp://localhost:10080'
