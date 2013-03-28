@@ -47,41 +47,20 @@
 #define CONF_ANSWER_HWM           "satan.answer.hwm"
 #define CONF_ANSWER_LINGER        "satan.answer.linger"
 
-#define CONF_PING_INTERVAL        "satan.info.ping_interval"
 #define CONF_DEVICE_UUID          "satan.info.thing_uid"
 
-#define MSG_COMMAND_STR_COMMAND      "COMMAND"
-#define MSG_COMMAND_STR_URLFIRM      "URLFIRM"
-#define MSG_COMMAND_STR_URLPAK       "URLPAK"
-#define MSG_COMMAND_STR_URLFILE      "URLFILE"
-#define MSG_COMMAND_STR_URLSCRIPT    "URLSCRIPT"
-#define MSG_COMMAND_STR_BINFIRM      "BINFIRM"
-#define MSG_COMMAND_STR_BINPAK       "BINPAK"
-#define MSG_COMMAND_STR_BINFILE      "BINFILE"
-#define MSG_COMMAND_STR_BINSCRIPT    "BINSCRIPT"
-#define MSG_COMMAND_STR_UCILINE      "UCILINE"
-#define MSG_COMMAND_STR_STATUS       "STATUS"
+#define MSG_COMMAND_STR_EXEC      "EXEC"
+#define MSG_COMMAND_STR_DOWNLOAD  "DOWNLOAD"
 
-#define MSG_COMMAND_URLFIRM      0x01
-#define MSG_COMMAND_URLPAK       0x02
-#define MSG_COMMAND_URLFILE      0x03
-#define MSG_COMMAND_URLSCRIPT    0x04
-#define MSG_COMMAND_BINFIRM      0x08
-#define MSG_COMMAND_BINPAK       0x09
-#define MSG_COMMAND_BINFILE      0x0A
-#define MSG_COMMAND_BINSCRIPT    0x0B
-#define MSG_COMMAND_UCILINE      0x10
-#define MSG_COMMAND_COMMAND      0x20
-#define MSG_COMMAND_STATUS       0x80
+#define MSG_COMMAND_EXEC      0x01
+#define MSG_COMMAND_DOWNLOAD     0x02
 
 #define MSG_ANSWER_STR_ACCEPTED      "MSGACCEPTED"
 #define MSG_ANSWER_STR_COMPLETED     "MSGCOMPLETED"
 #define MSG_ANSWER_STR_BADCRC        "MSGBADCRC"
-#define MSG_ANSWER_STR_BROKENURL     "MSGBROKENURL"
 #define MSG_ANSWER_STR_PARSEERROR    "MSGPARSEERROR"
 #define MSG_ANSWER_STR_UNREADABLE    "MSGUNREADABLE"
 #define MSG_ANSWER_STR_EXECERROR     "MSGEXECERROR"
-#define MSG_ANSWER_STR_UCIERROR      "MSGUCIERROR"
 #define MSG_ANSWER_STR_UNDEFERROR    "MSGUNDEFERROR"
 #define MSG_ANSWER_STR_CMDOUTPUT     "MSGCMDOUTPUT"
 #define MSG_ANSWER_STR_PENDING       "MSGPENDING"
@@ -90,22 +69,21 @@
 #define MSG_ANSWER_CMDOUTPUT     0x40
 #define MSG_ANSWER_COMPLETED     0x80
 #define MSG_ANSWER_BADCRC        0x02
-#define MSG_ANSWER_BROKENURL     0x04
 #define MSG_ANSWER_PARSEERROR    0x08
 #define MSG_ANSWER_UNREADABLE    0x09 // The message is SO WRONG we cannot even answer.
 #define MSG_ANSWER_EXECERROR     0x0C
-#define MSG_ANSWER_UCIERROR      0x10
 #define MSG_ANSWER_UNDEFERROR    0x20
 #define MSG_ANSWER_PENDING       0xC0
 
 #define SATAN_CHECKSUM_SIZE 4
-#define SATAN_FIRM_OPTIONS_LEN 4
+#define SATAN_DOWNLOAD_ARGS_LEN 4
 #define SATAN_UUID_LEN 16*2
 #define SATAN_MSGID_LEN 16*2  /*  Libuuid's uuid len, converted to string */
 
 typedef struct _satan_args_t {
 	void* worker_pipe;
 	void* child_supervision_pipe;
+
 	void *sub_socket;
 	char *sub_endpoint;
 	char *device_uuid; 
@@ -116,8 +94,6 @@ typedef struct _satan_args_t {
 	char *push_endpoint;
 	int req_hwm;
 	int req_linger;
-
-  int ping_interval;
 
 	config_context* cfg_ctx;
 } satan_args_t;
@@ -221,15 +197,6 @@ static int s_send_answer(satan_args_t* args, int code, char* msgid, char* laster
 				zmsg_pushstr(answer, "%s", args->device_uuid);
 				zmsg_send(&answer, args->push_socket);
 			} break;
-		case MSG_ANSWER_UCIERROR:
-			{
-				zmsg_t* answer = zmsg_new();
-				zmsg_pushstr(answer, "%s", lasterror);
-				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UCIERROR);
-				zmsg_pushstr(answer, "%s", msgid);
-				zmsg_pushstr(answer, "%s", args->device_uuid);
-				zmsg_send(&answer, args->push_socket);
-			} break;
 		case MSG_ANSWER_PENDING:
 			{
 				zmsg_t* answer = zmsg_new();
@@ -251,46 +218,6 @@ static int s_send_answer(satan_args_t* args, int code, char* msgid, char* laster
 	}
 	
 	return STATUS_OK;
-}
-
-static int s_execute_child(char* command, int count, ...)
-{
-	int i = 0;
-	int ret = STATUS_ERROR;
-	int sig = SIGCHLD;
-	char** argv = NULL;
-	char *env[] = { NULL };
-
-	if(access(command,F_OK) == -1) return STATUS_ERROR;
-
-	argv = malloc((count+2)*sizeof(char*));
-	memset(argv, 0, (count+2)*sizeof(char*));
-
-	va_list _params;
-	va_start(_params, count);
-	for(i=0; i<count; i++) {
-		argv[i+1] = va_arg(_params, char*);
-	}
-	va_end(_params);
-
-	argv[0] = command;
-
-	debugLog("Command '%s' , arg0 = %s, arg1 = %s", 
-			command, argv[0], argv[1]);
-
-  pid_t process_id = fork();
-  if (!process_id) {
-		execve(command,argv,env);
-		exit(0);
-	}
-	if(process_id>0) {
-		ret = wait(&sig) == -1 ? STATUS_ERROR : STATUS_OK;
-		if(ret == STATUS_OK) {
-			ret = WEXITSTATUS(sig) == 0 ? STATUS_OK : STATUS_ERROR;
-		}
-	}
-
-	return ret;
 }
 
 /**
@@ -317,7 +244,7 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 	uint32_t _computedsum;
 	int ret;
 
-	char *_uuid = NULL, *_msgid = NULL, *_command = NULL, *_url = NULL, *_file = NULL, *_exec = NULL;
+	char *_uuid = NULL, *_msgid = NULL, *_command = NULL, *_exec = NULL;
 	zframe_t *_bin = NULL, *_optframe = NULL, *_chksumframe = NULL;
 
 	assert(message);
@@ -349,28 +276,10 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 	if(_command == NULL) goto s_parse_unreadable;
 	_computedsum = SuperFastHash((uint8_t*)_command,strlen(_command),_computedsum);
 
-	if(str_equals(_command,MSG_COMMAND_STR_URLFIRM)) {
-		_intcmd = MSG_COMMAND_URLFIRM;
-	} else if(str_equals(_command,MSG_COMMAND_STR_URLPAK)) {
-		_intcmd = MSG_COMMAND_URLPAK;
-	} else if(str_equals(_command,MSG_COMMAND_STR_URLFILE)) {
-		_intcmd = MSG_COMMAND_URLFILE;
-	} else if(str_equals(_command,MSG_COMMAND_STR_URLSCRIPT)) {
-		_intcmd = MSG_COMMAND_URLSCRIPT;
-	} else if(str_equals(_command,MSG_COMMAND_STR_BINFIRM)) {
-		_intcmd = MSG_COMMAND_BINFIRM;
-	} else if(str_equals(_command,MSG_COMMAND_STR_BINPAK)) {
-		_intcmd = MSG_COMMAND_BINPAK;
-	} else if(str_equals(_command,MSG_COMMAND_STR_BINFILE)) {
-		_intcmd = MSG_COMMAND_BINFILE;
-	} else if(str_equals(_command,MSG_COMMAND_STR_BINSCRIPT)) {
-		_intcmd = MSG_COMMAND_BINSCRIPT;
-	} else if(str_equals(_command,MSG_COMMAND_STR_UCILINE)) {
-		_intcmd = MSG_COMMAND_UCILINE;
-	} else if(str_equals(_command,MSG_COMMAND_STR_COMMAND)) {
-		_intcmd = MSG_COMMAND_COMMAND;
-	} else if(str_equals(_command,MSG_COMMAND_STR_STATUS)) {
-		_intcmd = MSG_COMMAND_STATUS;
+	if(str_equals(_command,MSG_COMMAND_STR_DOWNLOAD)) {
+		_intcmd = MSG_COMMAND_DOWNLOAD;
+	} else if(str_equals(_command,MSG_COMMAND_STR_EXEC)) {
+		_intcmd = MSG_COMMAND_EXEC;
 	} else {
 		goto s_parse_parseerror;
 	}
@@ -380,61 +289,17 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 	_arguments = zmsg_dup(duplicate); // Save the arguments somewhere
 
 	switch(_intcmd) {
-		case MSG_COMMAND_UCILINE: // an UCI line is also a string
-		case MSG_COMMAND_COMMAND:
-		case MSG_COMMAND_URLFIRM:
-		case MSG_COMMAND_URLSCRIPT:
-		case MSG_COMMAND_URLFILE:
-		case MSG_COMMAND_URLPAK: 
+		case MSG_COMMAND_EXEC:
 			{
-				_url = zmsg_popstr(duplicate);
-				if(_url == NULL) goto s_parse_parseerror;
-				_computedsum = SuperFastHash((uint8_t*)_url,strlen(_url),_computedsum);
+				_exec = zmsg_popstr(duplicate);
+				if(_exec == NULL) goto s_parse_parseerror;
+				_computedsum = SuperFastHash((uint8_t*)_exec,strlen(_exec),_computedsum);
 			} break;
-		case MSG_COMMAND_BINFIRM:
-		case MSG_COMMAND_BINSCRIPT:
-		case MSG_COMMAND_BINFILE:
-		case MSG_COMMAND_BINPAK:
+		case MSG_COMMAND_DOWNLOAD:
 			{
 				_bin = zmsg_pop(duplicate);
 				if(_bin == NULL) goto s_parse_parseerror;
 				_computedsum = SuperFastHash(zframe_data(_bin),zframe_size(_bin),_computedsum);
-			} break;
-		default:
-			break;
-	}
-
-	switch(_intcmd) {
-		case MSG_COMMAND_BINFILE:
-		case MSG_COMMAND_URLFILE:
-      /*  We have to hash a string parameter (the options) */
-			{
-				if(zmsg_size(duplicate) != 2) goto s_parse_parseerror;
-				_file = zmsg_popstr(duplicate);
-				if(_file == NULL) goto s_parse_parseerror;
-				_computedsum = SuperFastHash((uint8_t*)_file,strlen(_file),_computedsum);
-			} break;
-		case MSG_COMMAND_URLFIRM:
-		case MSG_COMMAND_BINFIRM:
-      /*  We have to hash a binary parameter (the options) */
-			{
-				if(zmsg_size(duplicate) != 2) goto s_parse_parseerror;
-				_optframe = zmsg_pop(duplicate);
-				if(_optframe == NULL || zframe_size(_optframe) != SATAN_FIRM_OPTIONS_LEN) goto s_parse_parseerror;
-				_computedsum = SuperFastHash(zframe_data(_optframe),zframe_size(_optframe),_computedsum);
-			} break;
-		case MSG_COMMAND_BINPAK:
-		case MSG_COMMAND_URLPAK:
-		case MSG_COMMAND_UCILINE:
-      /*  We have to hash a various number of string parameters */
-			{
-				int _k;
-				int _size = zmsg_size(duplicate)-1;
-				for(_k=0;_k<_size;_k++) {
-					_exec = zmsg_popstr(duplicate);
-					if(_exec == NULL) goto s_parse_parseerror;
-					_computedsum = SuperFastHash((uint8_t*)_exec,strlen(_exec),_computedsum);
-				}
 			} break;
 		default:
 			break;
@@ -460,12 +325,9 @@ s_parse_finish: /*  Free everything */
 	if(_uuid) free(_uuid);
   if(_msgid) free(_msgid);
 	if(_command) free(_command);
-	if(_url) free(_url);
-	if(_file) free(_file);
 	if(_exec) free(_exec);
 
 	if(_bin) zframe_destroy(&_bin);
-	if(_optframe) zframe_destroy(&_optframe);
 	if(_chksumframe) zframe_destroy(&_chksumframe);
 
 	if(_arguments) zmsg_destroy(&_arguments);
@@ -591,95 +453,66 @@ s_apply_command_parseerror:
 
 }
 
-
-static int s_apply_uciline(satan_args_t* args, zmsg_t* arguments, char** lasterror)
+int s_file_write(char* file_name, char* data, int len) 
 {
-	int i, size, ret;
-	char *param = NULL;
-	char buffer[MAX_STRING_LEN], key[MAX_STRING_LEN], value[MAX_STRING_LEN];
-	char pkg[MAX_STRING_LEN], section[MAX_STRING_LEN], prop[MAX_STRING_LEN];
-	char path[MAX_STRING_LEN];
+	int written = 0;
+
+	int file = open(file_name, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP);
+	if (file < 0) {
+		free(file_name);
+		return STATUS_ERROR;
+	}
+
+	written = write(file,data,len);
+	close(file);
+
+	if (written != len) {
+		unlink(file_name);
+		return STATUS_ERROR;
+	}
+
+	return STATUS_OK;
+}
+
+static int s_download_file(satan_args_t* args, char* msgid, zmsg_t* arguments, char** lasterror)
+{
+	int ret;
+  char filename[MAX_STRING_LEN];
+	zframe_t *param = NULL;
+  uint8_t *data = NULL; 
+  int size = 0;
 
 	assert(args);
+  assert(msgid);
 	assert(arguments);
 	assert(lasterror);
 
-	*lasterror = NULL;
+  *lasterror = NULL;
 
-	param = zmsg_popstr(arguments);
-	if(param == NULL) 
-		goto s_apply_uciline_parseerror;
+  param = zmsg_pop(arguments);
+  if(param == NULL) goto s_download_file_parseerror;
+  data = zframe_data(param);
+  size = zframe_size(param);
 
-	*lasterror = strdup(param); // Save as the last possible error
-
-	/* Check the correctness of the expression */ 
-	for(i=0;i<strlen(param);i++) {
-		if (param[i] == '=') { param[i] = ' '; break; }
-	}
-
-	if (sscanf(param, "%s %s", key, value) != 2) 
-		goto s_apply_uciline_parseerror;
-
-	for(i=0;i<strlen(key);i++) {
-		if (key[i] == '.') 	key[i] = ' ';
-	}
-	if (sscanf(key, "%s %s %s", pkg, section, prop) != 3) 
-		goto s_apply_uciline_parseerror;
-
-	/*  Apply the configuration  */
-	if(snprintf(buffer,MAX_STRING_LEN,"%s.%s.%s=%s",pkg,section,prop,value) < 0)
-		goto s_apply_uciline_parseerror;
-
-	if(config_set(args->cfg_ctx,buffer) != STATUS_OK) {
-		goto s_apply_uciline_ucierror;
-  }
-	if(config_commit(args->cfg_ctx,pkg) != STATUS_OK) {
-		goto s_apply_uciline_ucierror;
-  }
-
-	/*  Execute the eventual daemons */
-	size = zmsg_size(arguments);
-	for(i=0;i<size;i++) {
-		char *daemon = zmsg_popstr(arguments);
-		if(daemon == NULL) goto s_apply_uciline_parseerror;
-		snprintf(path,MAX_STRING_LEN,"/etc/init.d/%s", daemon);
-		free(daemon);
-
-		free(*lasterror);
-		*lasterror = strdup(path);
-
-		ret = s_execute_child(path, 1, "stop");
-		if(ret != STATUS_OK) goto s_apply_uciline_execerror;
-		ret = s_execute_child(path, 1, "start");
-		if(ret != STATUS_OK) goto s_apply_uciline_execerror;
-	}
-			
-	if(*lasterror) {
-		free(*lasterror);
-		*lasterror = NULL;
-	}
+	/*  Write the file */
+  sprintf(filename, "/tmp/%s", msgid);
+  ret = s_file_write(filename,(char*)data,size);
+  if(ret != STATUS_OK) goto s_download_file_execerror;
 
 	ret = MSG_ANSWER_COMPLETED;
 
-s_apply_uciline_end:
-
+s_download_file_end:
 	if(param)
 		free(param);
-
 	return ret;
 
-s_apply_uciline_execerror:
+s_download_file_execerror:
 	ret = MSG_ANSWER_EXECERROR;
-	goto s_apply_uciline_end;
+	goto s_download_file_end;
 
-s_apply_uciline_ucierror:
-	ret = MSG_ANSWER_UCIERROR;
-	goto s_apply_uciline_end;
-
-s_apply_uciline_parseerror:
+s_download_file_parseerror:
 	ret = MSG_ANSWER_PARSEERROR;
-	goto s_apply_uciline_end;
-
+	goto s_download_file_end;
 }
 
 static int s_process_message(satan_args_t* args, char* msgid, uint8_t command, zmsg_t* arguments, char** lasterror) 
@@ -692,24 +525,16 @@ static int s_process_message(satan_args_t* args, char* msgid, uint8_t command, z
 	int ret = MSG_ANSWER_UNDEFERROR;
 
 	switch(command) {
-		case MSG_COMMAND_UCILINE:
-				ret = s_apply_uciline(args, arguments,lasterror);
+		case MSG_COMMAND_DOWNLOAD:
+				ret = s_download_file(args, msgid, arguments, lasterror);
 				break;
-    case MSG_COMMAND_COMMAND:
-				ret = s_apply_command(args, msgid, arguments,lasterror);
+    case MSG_COMMAND_EXEC:
+				ret = s_apply_command(args, msgid, arguments, lasterror);
         break;
-    case MSG_COMMAND_STATUS:
-        // TODO: Implement status commands
-        // ret = s_get_status(args, arguments, lasterror);
-        break;
-
-			/*  TODO: Implement the rest */
 	}
 
 	return ret;
 }
-
-#define MAX_PROCESS_IDS 256
 
 static void s_child_supervision_loop (void *user_args, zctx_t *ctx, void *pipe)
 {
@@ -780,20 +605,10 @@ static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
   uint8_t command;
   zmsg_t* arguments;
 
-	uint64_t next_ping = -1;
-
-	if(args->ping_interval != -1)
-		next_ping = zclock_time() + args->ping_interval * 1000;
-
 	while (!zctx_interrupted) {
 
 		signal(SIGINT, s_int_handler);
 		signal(SIGQUIT, s_int_handler);
-
-    if(zclock_time() > next_ping) {
-      // DO SOMETHING, SUCH AS REPORTING...
-      next_ping = zclock_time() + args->ping_interval * 1000;
-    }
 
 		if (zsocket_poll(pipe, 500)) {  // poll for 500 msecs
       zmsg_t* message = zmsg_recv (pipe);
@@ -868,8 +683,6 @@ int main(int argc, char *argv[])
 	args->req_hwm = config_get_int(args->cfg_ctx, CONF_ANSWER_HWM);
 	args->req_linger = config_get_int(args->cfg_ctx, CONF_ANSWER_LINGER);
 
-	args->ping_interval = config_get_int(args->cfg_ctx, CONF_PING_INTERVAL);
-	
 	s_handle_cmdline(args, argc, argv);
 
 	zctx_t *zmq_ctx = zctx_new ();

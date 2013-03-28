@@ -1,18 +1,12 @@
 # satan
 
-*satan* is a lightweight, NAT-traversing remote management tool for OpenWRT. Following the [KISS](http://en.wikipedia.org/wiki/KISS_principle) principle, it uses a very simple text-based grammar, so writing a remote control tool or collection of scripts should be really straightforward.
+No-bullshit remote management tool for OpenWRT.
 
-Examples of such command tools are given in the `python/` folder.
-
-*satan* has been released after many painful and unsuccessful attempts to manage easily and in a "2.0" fashion remote OpenWRT devices. Either client-side or server-side, there are little to no free, up-to-date, or even just easy-to-implement TR-69/Device:2/CWMP/OMA-DM/SNMP/whatever solutions that were truly satisfying.
-
-The other awesome tools available today ([Puppet](https://puppetlabs.com/), [Chef](http://www.opscode.com/chef/), [SaltStack](http://saltstack.com), ...) are unfortunately not usable on such resource-restricted (4MB flash usually) devices.
-
-*satan* for sure does not have the ambition to tackle as many issues as the previously noted tools do, but has the benefit of an incredible simplicity.
-
-The messaging protocol in *satan* uses the latest awesome [ZMQ3](http://www.zeromq.org/) protocol to reliabily receive PUB notifications from the remote server and PUSH back appropriate answers.
-
-The grammar is very-simple and human-readable.
+* Lightweight
+* NAT-traversing
+* Remotely DOWNLOAD files, EXEC stuff.
+* Uses the awesome [ZMQ3](http://www.zeromq.org/) protocol 
+* Future releases: will use ZMQ3 new security layer.
 
 ## Architecture
 
@@ -23,88 +17,62 @@ The grammar is very-simple and human-readable.
 
 Those options can also be set from the command line.
 
-*satan* is responsible for and able to:
+## Command structure
 
-* Execute an arbitrary command, just like a remote shell (but server-initiated)
-* Modify an UCI configuration line
-* Replace any file in the system
-* Update a package
-* Update the whole firmware
-* Execute a shell script
+satan allows you to send commands wrapped into ZeroMQ frames.
 
-Each command is prefixed by the remote device uuid and a message id, so that both the server and the device know who it is talking to / receiving answers from / which message is being answered. 
+* Each command is prefixed by the remote device uuid and a message id
+* Every answer (sometimes several) to a command is also prefixed by the device id and the message id.
 
 Those commands are represented in the following [ABNF](http://www.ietf.org/rfc/rfc2234.txt) grammar [D stands for device, S for server] :
+
+### Server commands
 
 ```
 S:satan-pub = uuid msgid command checksum
 
-command =  ( urlfirm / binfirm / 
-						urlpak / binpak / 
-						urlscript / binscript /
-						urlfile / binfile /
-						uciline / status )
+command =  ( download / exec ) 
 
-command   = 'COMMAND'   command
-
-urlfirm   = 'URLFIRM'   httpurl upgradeoptions
-urlpak    = 'URLPAK'    httpurl *executable
-urlfile   = 'URLFILE'   httpurl destpath
-urlscript = 'URLSCRIPT' httpurl
-
-binfirm   = 'BINFIRM'   binary upgradeoptions
-binpak    = 'BINPAK'    binary *executable
-binfile   = 'BINFILE'   binary destpath
-binscript = 'BINSCRIPT' binary
-
-uciline   = 'UCILINE'   optionname'='optionvalue *executable
-discover  = 'DISCOVER'
+download   = 'EXEC'     command
+command    = 'DOWNLOAD' binaryblob
 ```
 
 * `uuid` is the private device uuid to address to
 * `msgid` a unique ID to the message for its proper ACK
 * `checksum` is a control sum of the message
-* `httpurl` is an URL where the target file, package, firmware can be downloaded from
-* `binary` is the full binary script, file, package... transmitted via zeromq
-* `upgradeoptions` are some options for the firmware upgrade (undefined yet)
-* `executable` is the name of a _service_ to stop and relaunch as in `/etc/init.d/SERVICE start-stop`
-* `destpath` is the destination file where to copy the new one
-* `optionname` the UCI option name to update
-* `optionvalue` the UCI option value to be set.
-* `command` is a string (with spaces, line feeds, anything that fits into a ZMQ message frame)
+* `binaryblob` is any arbitrary binary blob, really.
+
+DOWNLOAD will actually copy the `binaryblob` bytes into a `/tmp/<msgid>` file.
+
+### Client answers
 
 ```
 D:satan-req = uuid msgid answer | uuid zeroedmsgid "UNREADABLE" originalmsg
 
 answer  = ( "MSGACCEPTED" / 
+						"MSGPENDING" /
+						"MSGCMDOUTPUT" /
 						"MSGCOMPLETED" /
 						"MSGBADCRC" /
-						"MSGHELLO" /
-						"MSGCMDOUTPUT" /
-						"MSGPENDING" /
 						brokenurl /
 						parseerror /
 						execerror /
 						ucierror /
 						undeferror
 
-brokenurl  = "MSGBROKENURL" httpurl
 parseerror = "MSGPARSEERROR"
 execerror  = "MSGEXECERROR" ( package / executable / script )
-ucierror   = "MSGUCIERROR" optionname
 undeferror = "MSGUNDEFERROR" 
 ```
 
-There above, bote that if a message is _HEAVILY_ unreadable -meaning we did not even succeed
+Note that if a message is _HEAVILY_ unreadable -meaning we did not even succeed
 to read up to the message id, we send it back with a zeroed `msgid`.
 
 Note that the device may send:
 * `MSGACCEPTED` in a first round, to notify the server that the message had an acceptable format
 * `MSGPENDING` is used to signal that the message was the source of a time-consuming operation that may finish later on.
 * `MSGCMDOUTPUT` to notify the server of additional output the command may generate
-* `MSGCOMPLETED` as soon as the operation is finished; however `COMPLETED` makes no much sense in two cases:
-** `DISCOVER` requests, the completeness is a simple HELLO.
-** Successful firmware update requests....
+* `MSGCOMPLETED` as soon as the operation is finished; however `COMPLETED` does not make much sense for a firmware upgrade.
 
 ## Compile
 
@@ -115,16 +83,16 @@ It takes care of making `satan` run at OpenWRT boot as well.
 You can place it directly under a `packages/satan/` folder of your OpenWRT root.
 
 ```bash
-rm dl/satan-0.1.0.tar.bz2
+rm dl/satan-xxxxx.tar.bz2
 make package/satan/install V=99
-scp bin/MACHINE_ARCH/packages/satan_0.1.0-1_ramips.ipk root@[remoterouter]:.
+scp bin/MACHINE_ARCH/packages/satan_xxxxx-1_ramips.ipk root@[remoterouter]:.
 ssh root@[remoterouter]
 ```
 
 Once connected,
 
 ```bash
-opkg install satan_0.1.0-1_ramips.ipk
+opkg install satan_xxxxxx-1_ramips.ipk
 ```
 
 And you're done.
