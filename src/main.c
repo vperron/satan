@@ -267,7 +267,7 @@ static int s_execute_child(char* command, int count, ...)
 	debugLog("Command '%s' , arg0 = %s, arg1 = %s", 
 			command, argv[0], argv[1]);
 
-  pid_t process_id = vfork();
+  pid_t process_id = fork();
   if (!process_id) {
 		execve(command,argv,env);
 		exit(0);
