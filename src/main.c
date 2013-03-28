@@ -715,7 +715,7 @@ static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
 		signal(SIGQUIT, s_int_handler);
 
     if(zclock_time() > next_ping) {
-      // s_hermes_send(args->hermes_socket, true);
+      // DO SOMETHING, SUCH AS REPORTING...
       next_ping = zclock_time() + args->ping_interval * 1000;
     }
 
