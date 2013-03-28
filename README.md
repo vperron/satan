@@ -110,17 +110,28 @@ Note that the device may send:
 
 The associated OpenWRT package makefile can be found under `files/Makefile`.
 It takes care of making `satan` run at OpenWRT boot as well.
+You can place it directly under a `packages/satan/` folder of your OpenWRT root.
 
 ```bash
 rm dl/satan-0.1.0.tar.bz2
 make package/satan/install V=99
 scp bin/MACHINE_ARCH/packages/satan_0.1.0-1_ramips.ipk root@[remoterouter]:.
+ssh root@[remoterouter]
 ```
+
+Once connected,
+
+```bash
+opkg install satan_0.1.0-1_ramips.ipk
+```
+
+And you're done.
 
 ### On the local machine:
 
 There is almost no use of satan if not on the remote router.
 Still, you can still try and compile it for fun or testing purposes, there is a standard autotools-powered compilation process.
+satan depends on czmq (and an underlying ZeroMQ v3.x) and uci packages to build.
 
 ```bash
 ./autogen.sh
