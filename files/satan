@@ -1,5 +1,5 @@
 config section 'info'
-	option thing_uid 'testtesttesttesttesttesttesttest'
+	option uid 'testtesttesttesttesttesttesttest'
 
 config section 'subscribe'
 	option endpoint 'tcp://localhost:10080'

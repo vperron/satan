@@ -3,6 +3,7 @@
 import zmq
 import uuid
 import struct
+import os
 import subprocess
 from superfasthash import SuperFastHash
 from time import sleep
@@ -59,28 +60,31 @@ def gen_uuid():
 
 class TestProtocol(unittest.TestCase):
 
-    def test_download_0(self):
+    def test_push_0(self):
         msgid = gen_uuid()
-        send_msg(pub_socket, [device_id, msgid, "DOWNLOAD"])
+        send_msg(pub_socket, [device_id, msgid, "PUSH"])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGPARSEERROR')
-    def test_download_1(self):
+    def test_push_1(self):
         msgid = gen_uuid()
-        send_msg(pub_socket, [device_id, msgid, "DOWNLOAD", binarydata])
+        send_msg(pub_socket, [device_id, msgid, "PUSH", binarydata])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGACCEPTED')
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGCOMPLETED')
-    def test_download_2(self):
+    def test_push_2(self):
         msgid = gen_uuid()
-        send_msg(pub_socket, [device_id, msgid, "DOWNLOAD", binarydata, "stupid"])
+        os.remove("stupid")
+        send_msg(pub_socket, [device_id, msgid, "PUSH", binarydata, "stupid"])
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
-        self.assertEqual(ans[2], 'MSGPARSEERROR')
-
+        self.assertEqual(ans[2], 'MSGACCEPTED')
+        ans = pull_socket.recv_multipart()
+        self.assertEqual(ans[1], msgid)
+        self.assertEqual(ans[2], 'MSGCOMPLETED')
 
     def test_exec_0(self):
         msgid = gen_uuid()
@@ -96,7 +100,7 @@ class TestProtocol(unittest.TestCase):
         self.assertEqual(ans[2], 'MSGACCEPTED')
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
-        self.assertEqual(ans[2], 'MSGPENDING')
+        self.assertEqual(ans[2], 'MSGTASK')
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGCOMPLETED')
@@ -114,7 +118,7 @@ class TestProtocol(unittest.TestCase):
         self.assertEqual(ans[2], 'MSGACCEPTED')
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
-        self.assertEqual(ans[2], 'MSGPENDING')
+        self.assertEqual(ans[2], 'MSGTASK')
         ans = pull_socket.recv_multipart()
         self.assertEqual(ans[1], msgid)
         self.assertEqual(ans[2], 'MSGCMDOUTPUT')

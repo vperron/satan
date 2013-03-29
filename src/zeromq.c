@@ -22,7 +22,8 @@
 #include "main.h"
 #include "zeromq.h"
 
-void zeromq_send_data(void* socket, char *identity, uint8_t* data, int size) {
+void zeromq_send_data(void* socket, char *identity, uint8_t* data, int size) 
+{
 	assert(socket);
 	assert(data);
 
@@ -35,8 +36,9 @@ void zeromq_send_data(void* socket, char *identity, uint8_t* data, int size) {
 	zmsg_send (&msg, socket);
 }
 
-void *zeromq_create_socket (zctx_t *context, char* endpoint, int type, 
-		char* topic, bool connect, int linger, int hwm) {
+void *zeromq_create_socket (zctx_t *context, const char* endpoint, int type, 
+		const char* topic, bool connect, int linger, int hwm) 
+{
 
 	void* socket = NULL;
 	char _endp[MAX_STRING_LEN];
@@ -62,15 +64,13 @@ void *zeromq_create_socket (zctx_t *context, char* endpoint, int type,
 	}
 	
 	if(type == ZMQ_SUB)
-		zsocket_set_subscribe (socket, topic == NULL ? "" : topic);
+		zsocket_set_subscribe (socket, (char*)(topic == NULL ? "" : topic));
 
 	strncpy(_endp, endpoint, MAX_STRING_LEN);
 	if(connect) {
 		zsocket_connect (socket, "%s", _endp);
-		debugLog("Connected to zmq endpoint : %s",_endp);
 	} else {
 		zsocket_bind (socket, "%s", _endp);
-		debugLog("Bound to zmq endpoint : %s",_endp);
 	}
 	return socket;
 }

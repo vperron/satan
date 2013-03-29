@@ -23,13 +23,13 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <czmq.h>
 #include <stdarg.h>
-#include <json/json.h>
 
 #include "main.h"
+#include "utils.h"
 #include "config.h"
+#include "messages.h"
 #include "zeromq.h"
 #include "superfasthash.h"
 
@@ -47,42 +47,17 @@
 #define CONF_ANSWER_HWM           "satan.answer.hwm"
 #define CONF_ANSWER_LINGER        "satan.answer.linger"
 
-#define CONF_DEVICE_UUID          "satan.info.thing_uid"
+#define CONF_DEVICE_UUID          "satan.info.uid"
 
-#define MSG_COMMAND_STR_EXEC      "EXEC"
-#define MSG_COMMAND_STR_DOWNLOAD  "DOWNLOAD"
-
-#define MSG_COMMAND_EXEC      0x01
-#define MSG_COMMAND_DOWNLOAD     0x02
-
-#define MSG_ANSWER_STR_ACCEPTED      "MSGACCEPTED"
-#define MSG_ANSWER_STR_COMPLETED     "MSGCOMPLETED"
-#define MSG_ANSWER_STR_BADCRC        "MSGBADCRC"
-#define MSG_ANSWER_STR_PARSEERROR    "MSGPARSEERROR"
-#define MSG_ANSWER_STR_UNREADABLE    "MSGUNREADABLE"
-#define MSG_ANSWER_STR_EXECERROR     "MSGEXECERROR"
-#define MSG_ANSWER_STR_UNDEFERROR    "MSGUNDEFERROR"
-#define MSG_ANSWER_STR_CMDOUTPUT     "MSGCMDOUTPUT"
-#define MSG_ANSWER_STR_PENDING       "MSGPENDING"
-
-#define MSG_ANSWER_ACCEPTED      0x01
-#define MSG_ANSWER_CMDOUTPUT     0x40
-#define MSG_ANSWER_COMPLETED     0x80
-#define MSG_ANSWER_BADCRC        0x02
-#define MSG_ANSWER_PARSEERROR    0x08
-#define MSG_ANSWER_UNREADABLE    0x09 // The message is SO WRONG we cannot even answer.
-#define MSG_ANSWER_EXECERROR     0x0C
-#define MSG_ANSWER_UNDEFERROR    0x20
-#define MSG_ANSWER_PENDING       0xC0
 
 #define SATAN_CHECKSUM_SIZE 4
-#define SATAN_DOWNLOAD_ARGS_LEN 4
+#define SATAN_PUSH_ARGS_LEN 4
 #define SATAN_UUID_LEN 16*2
 #define SATAN_MSGID_LEN 16*2  /*  Libuuid's uuid len, converted to string */
 
 typedef struct _satan_args_t {
-	void* worker_pipe;
-	void* child_supervision_pipe;
+	void* pipe;
+	void* inbox;
 
 	void *sub_socket;
 	char *sub_endpoint;
@@ -95,7 +70,6 @@ typedef struct _satan_args_t {
 	int req_hwm;
 	int req_linger;
 
-	config_context* cfg_ctx;
 } satan_args_t;
 
 
@@ -109,7 +83,6 @@ static void s_int_handler(int foo)
 {
 	zctx_interrupted = true;
 }
-
 
 static void s_handle_cmdline(satan_args_t* args, int argc, char** argv) {
 	int flags = 0;
@@ -156,86 +129,6 @@ static void s_handle_cmdline(satan_args_t* args, int argc, char** argv) {
 
 }
 
-static int s_send_answer(satan_args_t* args, int code, char* msgid, char* lasterror) 
-{
-
-
-	switch(code) {
-		case MSG_ANSWER_EXECERROR:
-			{
-				/*  TODO: factor this a little  */
-				zmsg_t* answer = zmsg_new();
-				zmsg_pushstr(answer, "%s", lasterror);
-				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_EXECERROR);
-				zmsg_pushstr(answer, "%s", msgid);
-				zmsg_pushstr(answer, "%s", args->device_uuid);
-				zmsg_send(&answer, args->push_socket);
-			} break;
-		case MSG_ANSWER_PARSEERROR:
-			{
-				zmsg_t* answer = zmsg_new();
-				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_PARSEERROR);
-				zmsg_pushstr(answer, "%s", msgid);
-				zmsg_pushstr(answer, "%s", args->device_uuid);
-				zmsg_send(&answer, args->push_socket);
-			} break;
-		case MSG_ANSWER_UNDEFERROR:
-			{
-				zmsg_t* answer = zmsg_new();
-				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UNDEFERROR);
-				zmsg_pushstr(answer, "%s", msgid);
-				zmsg_pushstr(answer, "%s", args->device_uuid);
-				zmsg_send(&answer, args->push_socket);
-			} break;
-		case MSG_ANSWER_CMDOUTPUT:
-			{
-				zmsg_t* answer = zmsg_new();
-        zframe_t *frame = zframe_new (lasterror, strlen(lasterror));
-        zmsg_push(answer, frame);
-				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_CMDOUTPUT);
-				zmsg_pushstr(answer, "%s", msgid);
-				zmsg_pushstr(answer, "%s", args->device_uuid);
-				zmsg_send(&answer, args->push_socket);
-			} break;
-		case MSG_ANSWER_PENDING:
-			{
-				zmsg_t* answer = zmsg_new();
-				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_PENDING);
-				zmsg_pushstr(answer, "%s", msgid);
-				zmsg_pushstr(answer, "%s", args->device_uuid);
-				zmsg_send(&answer, args->push_socket);
-			} break;
-		case MSG_ANSWER_COMPLETED:
-			{
-				zmsg_t* answer = zmsg_new();
-				zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_COMPLETED);
-				zmsg_pushstr(answer, "%s", msgid);
-				zmsg_pushstr(answer, "%s", args->device_uuid);
-				zmsg_send(&answer, args->push_socket);
-			} break;
-		default:
-			break;
-	}
-	
-	return STATUS_OK;
-}
-
-/**
- * \name s_parse_message
- *
- * Parses the server message and checks its correctness.
- * It's only a PROTOCOL verification, not a semantic one.
- *
- * No checks to verify if URLs are not broken links, 
- * files actually exist, etc.
- * 
- * \param message the message to parse. 
- * \param msgid   the message ID that will be extracted from message.
- * \param command the integer-converted command identifier.
- * \param arguments the arguments left to the message
- *
- * \return status one of the MSG_ANSWER_* messages.
- */
 int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** arguments) 
 {
 	zmsg_t* duplicate = NULL;
@@ -245,7 +138,7 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 	int ret;
 
 	char *_uuid = NULL, *_msgid = NULL, *_command = NULL, *_exec = NULL;
-	zframe_t *_bin = NULL, *_optframe = NULL, *_chksumframe = NULL;
+	zframe_t *_bin = NULL, *_chksumframe = NULL;
 
 	assert(message);
 	assert(msgid);
@@ -276,8 +169,8 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 	if(_command == NULL) goto s_parse_unreadable;
 	_computedsum = SuperFastHash((uint8_t*)_command,strlen(_command),_computedsum);
 
-	if(str_equals(_command,MSG_COMMAND_STR_DOWNLOAD)) {
-		_intcmd = MSG_COMMAND_DOWNLOAD;
+	if(str_equals(_command,MSG_COMMAND_STR_PUSH)) {
+		_intcmd = MSG_COMMAND_PUSH;
 	} else if(str_equals(_command,MSG_COMMAND_STR_EXEC)) {
 		_intcmd = MSG_COMMAND_EXEC;
 	} else {
@@ -295,11 +188,17 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 				if(_exec == NULL) goto s_parse_parseerror;
 				_computedsum = SuperFastHash((uint8_t*)_exec,strlen(_exec),_computedsum);
 			} break;
-		case MSG_COMMAND_DOWNLOAD:
+		case MSG_COMMAND_PUSH:
 			{
 				_bin = zmsg_pop(duplicate);
 				if(_bin == NULL) goto s_parse_parseerror;
 				_computedsum = SuperFastHash(zframe_data(_bin),zframe_size(_bin),_computedsum);
+        if(zmsg_size(duplicate) > 1) {
+          char *filename = zmsg_popstr(duplicate);
+          if(filename == NULL) goto s_parse_parseerror;
+          _computedsum = SuperFastHash((uint8_t*)filename,strlen(filename),_computedsum);
+          free(filename);
+        }
 			} break;
 		default:
 			break;
@@ -348,325 +247,117 @@ s_parse_parseerror:
 	goto s_parse_finish;
 }
 
-#define LONG_BUFFER_LEN 2000
-
-static int s_exec_report_stdout(satan_args_t* args, char* msgid, char* cmd)
+static int s_process_message(satan_args_t* args, char* msgid, uint8_t command, zmsg_t* arguments) 
 {
-	int sig = SIGCHLD;
-	int ret = STATUS_ERROR;
-
-  assert(args);
-  assert(msgid);
-  assert(cmd);
-
-  pid_t process_id = fork();
-  if (!process_id) {
-    /*  Recreate the socket context in the forked child */
-	  zctx_t *zmq_ctx = zctx_new ();
-    args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH, 
-			NULL, true, args->req_linger, args->req_hwm);
-    assert(args->push_socket != NULL);
-    
-    char answer[LONG_BUFFER_LEN];
-    memset(answer,0,LONG_BUFFER_LEN);
-    unsigned int answer_len = 0;
-
-    char buffer[MAX_STRING_LEN];
-    memset(buffer,0,MAX_STRING_LEN);
-    unsigned int buffer_len = 0;
-    
-    /*  Execute the command and circularly read the output, sending the buffer upstream */
-    FILE *stream = popen(cmd, "r");
-    while ( fgets(buffer, MAX_STRING_LEN, stream) != NULL ) {
-      buffer_len = strlen(buffer);
-      if (answer_len + buffer_len > LONG_BUFFER_LEN) {
-        s_send_answer(args, MSG_ANSWER_CMDOUTPUT, msgid, answer);
-        memset(answer,0,LONG_BUFFER_LEN);
-        answer_len = 0;
-      }
-      strncat(answer, buffer, MAX_STRING_LEN);
-      answer_len += buffer_len;
-    }
-    if (answer_len != 0) {
-      s_send_answer(args, MSG_ANSWER_CMDOUTPUT, msgid, answer);
-    }
-    pclose(stream);
-    zsocket_destroy (zmq_ctx, args->push_socket);
-    zctx_destroy (&zmq_ctx);
-		exit(0);
-	}
-
-	if(process_id>0) {
-    zmsg_t* pidmsg = zmsg_new();
-    zframe_t *frame = zframe_new(&process_id, sizeof(pid_t));
-    zmsg_push(pidmsg, frame);
-    zmsg_pushstr(pidmsg, "%s", cmd);
-    zmsg_pushstr(pidmsg, "%s", msgid);
-    zmsg_send(&pidmsg, args->child_supervision_pipe);
-    ret = STATUS_OK;
-	}
-
-	return ret;
-}
-
-static int s_apply_command(satan_args_t* args, char* msgid, zmsg_t* arguments, char** lasterror)
-{
-	int i, size, ret;
-	char *param = NULL;
-
 	assert(args);
   assert(msgid);
-	assert(arguments);
-	assert(lasterror);
-
-	*lasterror = NULL;
-
-	param = zmsg_popstr(arguments);
-	if(param == NULL) 
-		goto s_apply_command_parseerror;
-
-	*lasterror = strdup(param); // Save as the last possible error
-
-	/*  Execute the command */
-  ret = s_exec_report_stdout(args, msgid, param);
-  if(ret != STATUS_OK) goto s_apply_command_execerror;
-			
-	if(*lasterror) {
-		free(*lasterror);
-		*lasterror = NULL;
-	}
-
-	ret = MSG_ANSWER_PENDING;
-
-s_apply_command_end:
-	if(param)
-		free(param);
-	return ret;
-
-s_apply_command_execerror:
-	ret = MSG_ANSWER_EXECERROR;
-	goto s_apply_command_end;
-
-s_apply_command_parseerror:
-	ret = MSG_ANSWER_PARSEERROR;
-	goto s_apply_command_end;
-
-}
-
-int s_file_write(char* file_name, char* data, int len) 
-{
-	int written = 0;
-
-	int file = open(file_name, O_WRONLY | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR | S_IRGRP);
-	if (file < 0) {
-		free(file_name);
-		return STATUS_ERROR;
-	}
-
-	written = write(file,data,len);
-	close(file);
-
-	if (written != len) {
-		unlink(file_name);
-		return STATUS_ERROR;
-	}
-
-	return STATUS_OK;
-}
-
-static int s_download_file(satan_args_t* args, char* msgid, zmsg_t* arguments, char** lasterror)
-{
-	int ret;
-  char filename[MAX_STRING_LEN];
-	zframe_t *param = NULL;
-  uint8_t *data = NULL; 
-  int size = 0;
-
-	assert(args);
-  assert(msgid);
-	assert(arguments);
-	assert(lasterror);
-
-  *lasterror = NULL;
-
-  param = zmsg_pop(arguments);
-  if(param == NULL) goto s_download_file_parseerror;
-  data = zframe_data(param);
-  size = zframe_size(param);
-
-	/*  Write the file */
-  sprintf(filename, "/tmp/%s", msgid);
-  ret = s_file_write(filename,(char*)data,size);
-  if(ret != STATUS_OK) goto s_download_file_execerror;
-
-	ret = MSG_ANSWER_COMPLETED;
-
-s_download_file_end:
-	if(param)
-		free(param);
-	return ret;
-
-s_download_file_execerror:
-	ret = MSG_ANSWER_EXECERROR;
-	goto s_download_file_end;
-
-s_download_file_parseerror:
-	ret = MSG_ANSWER_PARSEERROR;
-	goto s_download_file_end;
-}
-
-static int s_process_message(satan_args_t* args, char* msgid, uint8_t command, zmsg_t* arguments, char** lasterror) 
-{
-
-	assert(args);
-  assert(msgid);
-	assert(lasterror);
 
 	int ret = MSG_ANSWER_UNDEFERROR;
 
 	switch(command) {
-		case MSG_COMMAND_DOWNLOAD:
-				ret = s_download_file(args, msgid, arguments, lasterror);
-				break;
-    case MSG_COMMAND_EXEC:
-				ret = s_apply_command(args, msgid, arguments, lasterror);
-        break;
+		case MSG_COMMAND_EXEC:
+      {
+        char *cmd = zmsg_popstr(arguments);
+        pid_t pid = messages_exec(args->device_uuid, msgid, args->push_endpoint, cmd);
+        if (pid == -1) {
+          ret = MSG_ANSWER_EXECERROR;
+        } else {
+          zmsg_t* msg = zmsg_new();
+          zframe_t *frame = zframe_new(&pid, sizeof(pid_t));
+          zmsg_push(msg, frame);
+          zmsg_pushstr(msg, "%s", cmd);
+          zmsg_pushstr(msg, "%s", msgid);
+          zmsg_pushstr(msg, "%s", MSG_INTERNAL);
+          zmsg_send(&msg, args->pipe);
+          ret = MSG_ANSWER_TASK;
+        }
+      } break;
+    case MSG_COMMAND_PUSH:
+      ret = messages_push(msgid, arguments);
+      break;
 	}
 
 	return ret;
 }
 
-static void s_child_supervision_loop (void *user_args, zctx_t *ctx, void *pipe)
+static void s_check_children_termination(zlist_t *processlist, char* device_id, void* socket)
 {
-  
-  typedef struct s_pid_msg_t {
-    pid_t pid;
-    char* msgid;
-    char* command;
-  } pid_msg;
-
-  char* msgid;
-  char* command;
   int status;
-	satan_args_t* args = (satan_args_t*)user_args;
-  pid_msg* item = NULL;
-  zlist_t* process_ids = zlist_new();
-
-	while (!zctx_interrupted) {
-		signal(SIGINT, s_int_handler);
-		signal(SIGQUIT, s_int_handler);
-
-    item = zlist_first(process_ids);
-    while(item != NULL) {
-      if (waitpid(item->pid, &status, WNOHANG) != 0) {
-        zmsg_t* answer = zmsg_new();
-        zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_COMPLETED);
-        zmsg_pushstr(answer, "%s", item->msgid);
-        zmsg_pushstr(answer, "%s", args->device_uuid);
-        zmsg_send(&answer, args->push_socket);
-        free(item->msgid);
-        free(item->command);
-        zlist_remove(process_ids, item);
-        free(item);
-      }
-      item = zlist_next(process_ids);
+  process_item *item = zlist_first(processlist);
+  while(item != NULL) {
+    // TODO make this act on THREADS
+    if (waitpid(item->pid, &status, WNOHANG) != 0) {
+      zmsg_t* answer = zmsg_new();
+      zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_COMPLETED);
+      zmsg_pushstr(answer, "%s", item->message_id);
+      zmsg_pushstr(answer, "%s", device_id);
+      zmsg_send(&answer, socket);
+      free(item->message_id);
+      free(item->command);
+      zlist_remove(processlist, item);
+      free(item);
     }
-
-		if (zsocket_poll(pipe, 1000)) {  // poll for 1s
-      zmsg_t* message = zmsg_recv (pipe);
-      if(!message) continue;
-
-	    msgid = zmsg_popstr(message); 
-	    command = zmsg_popstr(message); 
-	    zframe_t* pidframe = zmsg_pop(message);
-	    pid_t pid = get32bits(zframe_data(pidframe));
-      item = malloc(sizeof(pid_msg));
-      item->pid = pid;
-      item->msgid = strdup(msgid);
-      item->command = strdup(command);
-      zlist_append(process_ids, item);
-
-      zframe_destroy(&pidframe);
-      free(msgid);
-
-      if(message)
-        zmsg_destroy(&message);
-    }
+    item = zlist_next(processlist);
   }
-  zlist_destroy(&process_ids);
-	args->child_supervision_pipe = NULL;
+}
+
+static void s_server_message (satan_args_t* args, zmsg_t *message) 
+{
+  /*  Server message, to be processed  */
+  uint8_t command;
+  int ret = STATUS_ERROR;
+  zmsg_t *arguments = NULL;
+  char *msgid = NULL;
+  zmsg_t* answer = NULL;
+
+  ret = s_parse_message(message, &msgid, &command, &arguments);
+  answer = messages_parse_result2msg(args->device_uuid, ret, msgid, message);
+  assert(answer != NULL);
+  zmsg_send(&answer, args->push_socket);
+
+  if (ret == MSG_ANSWER_ACCEPTED) {
+    ret = s_process_message(args, msgid, command, arguments);
+    answer = messages_exec_result2msg(args->device_uuid, ret, msgid);
+    assert(answer != NULL);
+    zmsg_send(&answer, args->push_socket);
+  }
+
+  if(msgid)
+    free(msgid);
+  if(arguments) 
+    zmsg_destroy(&arguments);
 }
 
 static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
 {
 	satan_args_t* args = (satan_args_t*)user_args;
-
-  int ret;
-  char* msgid;
-  uint8_t command;
-  zmsg_t* arguments;
+  zlist_t *process_items = zlist_new();
 
 	while (!zctx_interrupted) {
 
 		signal(SIGINT, s_int_handler);
 		signal(SIGQUIT, s_int_handler);
 
-		if (zsocket_poll(pipe, 500)) {  // poll for 500 msecs
+    s_check_children_termination(process_items, args->device_uuid, args->push_socket);
+
+    if (zsocket_poll(pipe, 500)) { 
       zmsg_t* message = zmsg_recv (pipe);
       if(!message) continue;
 
-      debugLog("Received msg of len: %d bytes", (int)zmsg_content_size(message));
-
-      ret = s_parse_message(message, &msgid, &command, &arguments);
-      switch(ret) {
-        case MSG_ANSWER_UNREADABLE:
-          {
-            zmsg_t* answer = zmsg_dup(message);
-            zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_UNREADABLE);
-            zmsg_pushstr(answer, "%032d", 0); /*  send a zeroed msgid */
-            zmsg_pushstr(answer, "%s", args->device_uuid);
-            zmsg_send(&answer, args->push_socket);
-          } break;
-        case MSG_ANSWER_PARSEERROR:
-        case MSG_ANSWER_BADCRC:
-          {
-            zmsg_t* answer = zmsg_dup(message);
-            if(ret == MSG_ANSWER_BADCRC) 
-              zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_BADCRC);
-            else
-              zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_PARSEERROR);
-            zmsg_pushstr(answer, "%s", msgid);
-            zmsg_pushstr(answer, "%s", args->device_uuid);
-            zmsg_send(&answer, args->push_socket);
-          } break;
-        case MSG_ANSWER_ACCEPTED:
-          {
-            char* lasterror = NULL;
-
-            zmsg_t* answer = zmsg_new();
-            zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_ACCEPTED);
-            zmsg_pushstr(answer, "%s", msgid);
-            zmsg_pushstr(answer, "%s", args->device_uuid);
-            zmsg_send(&answer, args->push_socket);
-
-            ret = s_process_message(args, msgid, command, arguments, &lasterror);
-            s_send_answer(args, ret, msgid, lasterror);
-
-            if(lasterror)
-              free(lasterror);
-
-          } break;
+      char* header = zmsg_popstr(message);
+      if(str_equals(header, MSG_INTERNAL)) {
+        process_item *item = utils_msg2processitem(message);
+        zlist_append(process_items, item);
+      } else if (str_equals(header, MSG_SERVER)) {
+        s_server_message(args, message);
       }
 
-      if(msgid)
-        free(msgid);
-      if(arguments) 
-        zmsg_destroy(&arguments);
-      if(message)
-        zmsg_destroy(&message);
+      zmsg_destroy(&message);
     }
   }
-	args->worker_pipe = NULL;
+
+  zlist_destroy(&process_items);
+	args->pipe = NULL;
 }
 
 int main(int argc, char *argv[])
@@ -675,52 +366,40 @@ int main(int argc, char *argv[])
 
 	memset(args,0,sizeof(args));
 
-	args->cfg_ctx = config_new();
+  /*  Get UCI configuration, if any.  */
+	config_context* cfg_ctx = config_new();
+	config_get_str(cfg_ctx,CONF_SUBSCRIBE_ENDPOINT,&args->sub_endpoint);
+	config_get_str(cfg_ctx,CONF_DEVICE_UUID,&args->device_uuid);
+	args->sub_hwm = config_get_int(cfg_ctx, CONF_SUBSCRIBE_HWM);
+	args->sub_linger = config_get_int(cfg_ctx, CONF_SUBSCRIBE_LINGER);
+	config_get_str(cfg_ctx,CONF_ANSWER_ENDPOINT,&args->push_endpoint);
+	args->req_hwm = config_get_int(cfg_ctx, CONF_ANSWER_HWM);
+	args->req_linger = config_get_int(cfg_ctx, CONF_ANSWER_LINGER);
+	config_destroy(cfg_ctx);
 
-	config_get_str(args->cfg_ctx,CONF_SUBSCRIBE_ENDPOINT,&args->sub_endpoint);
-	config_get_str(args->cfg_ctx,CONF_DEVICE_UUID,&args->device_uuid);
-
-	args->sub_hwm = config_get_int(args->cfg_ctx, CONF_SUBSCRIBE_HWM);
-	args->sub_linger = config_get_int(args->cfg_ctx, CONF_SUBSCRIBE_LINGER);
-
-	config_get_str(args->cfg_ctx,CONF_ANSWER_ENDPOINT,&args->push_endpoint);
-	args->req_hwm = config_get_int(args->cfg_ctx, CONF_ANSWER_HWM);
-	args->req_linger = config_get_int(args->cfg_ctx, CONF_ANSWER_LINGER);
-
+  /*  Eventually override it with command line args.  */
 	s_handle_cmdline(args, argc, argv);
 
-	zctx_t *zmq_ctx = zctx_new ();
-
+	/*  ZeroMQ sockets init  */
+  zctx_t *zmq_ctx = zctx_new ();
 	args->sub_socket = zeromq_create_socket(zmq_ctx, args->sub_endpoint, ZMQ_SUB,
 			args->device_uuid, true, args->sub_linger, args->sub_hwm);
 	assert(args->sub_socket != NULL);
-
-	/*  NOTE: Until now, we acknowledge the messages with a PUSH socket.
-	 *  It blocks on a full HWM, meaning "if too many messages in the queue"
-	 *  If we use a REQ socket, we will also have various issues while waiting 
-	 *  for our answers. Moreover, getting an ACK or not from the server changes
-	 *  NOTHING here. 
-   *  See in production tests what happens.
-   *  */
 	args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH, 
 			NULL, true, args->req_linger, args->req_hwm);
 	assert(args->push_socket != NULL);
 
 	/*  Create worker thread  */
-	args->worker_pipe = zthread_fork(zmq_ctx, s_worker_loop, args);
-
-  /*  Create child supervision thread */
-	args->child_supervision_pipe = zthread_fork(zmq_ctx, s_child_supervision_loop, args);
+	args->pipe = zthread_fork(zmq_ctx, s_worker_loop, args);
 
 	/*  Main listener loop */
 	while(!zctx_interrupted) {
 		if (zsocket_poll(args->sub_socket, 1000)) { 
 			zmsg_t *message = zmsg_recv (args->sub_socket);
 			if(message){ 
-				if(args->worker_pipe)
-					zmsg_send(&message,args->worker_pipe);
-				else
-					break;
+				if(!args->pipe) break;
+        zmsg_pushstr(message, MSG_SERVER);
+        zmsg_send(&message,args->pipe);
 			}
 		}
 	}
@@ -728,7 +407,6 @@ int main(int argc, char *argv[])
 	zsocket_destroy (zmq_ctx, args->sub_socket);
 	zsocket_destroy (zmq_ctx, args->push_socket);
 	zctx_destroy (&zmq_ctx);
-	config_destroy(args->cfg_ctx);
 
 	free(args);
 

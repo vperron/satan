@@ -1,10 +1,10 @@
 # satan
 
-No-bullshit remote management tool for OpenWRT.
+Barebone remote management tool for OpenWRT.
 
 * Lightweight
 * NAT-traversing
-* Remotely DOWNLOAD files, EXEC stuff.
+* Server-initiated PUSH/PULL files, EXEC stuff onto remote device.
 * Uses the awesome [ZMQ3](http://www.zeromq.org/) protocol 
 * Future releases: will use ZMQ3 new security layer.
 
@@ -31,38 +31,48 @@ Those commands are represented in the following [ABNF](http://www.ietf.org/rfc/r
 ```
 S:satan-pub = uuid msgid command checksum
 
-command =  ( download / exec ) 
+command =  ( push / pull / exec / tasks / kill ) 
 
-download   = 'EXEC'     command
-command    = 'DOWNLOAD' binaryblob
+exec   = 'EXEC' <command>
+push   = 'PUSH' <binaryblob> [filename]
+pull   = 'PULL' <filename>
+tasks  = 'TASKS'
+kill   = 'KILL' <task_id>
+
 ```
 
-* `uuid` is the private device uuid to address to
-* `msgid` a unique ID to the message for its proper ACK
-* `checksum` is a control sum of the message
-* `binaryblob` is any arbitrary binary blob, really.
+#### Parameters
 
-DOWNLOAD will actually copy the `binaryblob` bytes into a `/tmp/<msgid>` file.
+* `uuid` is the private device unique ID to address to
+* `msgid` a unique ID to the message and all of its answers.
+* `checksum` is a control sum for the message arguments, calculated using Paul Hsieh's [superfasthash](http://www.azillionmonkeys.com/qed/hash.html)
+* `binaryblob` is any arbitrary binary blob: script, firmware image, package...
+
+##### Command use
+
+* EXEC allows you to run any arbitrary command on the remote device and watch its output from the server.
+satan internally keeps track of every task alive; the MSGPENDING message is associated with a `task\_id` that you can us in the KILL command to terminate the task; the MSGCOMPLETED message is issued when the task ends.
+* Use TASKS command to list the current active tasks on the remote. Every task is associated with its original message ID and complete command, to easily identify it.
+* The KILL command enables you to easily kill a task that you find disturbing and remove it from satan's internal task list.
+* The PUSH command allows you to push any blob of data onto the device. It will be saved into the `/tmp/<msgid>` file unless you soecify the optional `filename` argument.
+* The PULL command does the opposite; it enables you to retrieve a file from the remote as designated by the `filename` parameter.
 
 ### Client answers
 
 ```
-D:satan-req = uuid msgid answer | uuid zeroedmsgid "UNREADABLE" originalmsg
+D:satan-req = uuid msgid answer | <uuid> <emptymsgid>  'UNREADABLE' <originalmsg>
 
-answer  = ( "MSGACCEPTED" / 
-						"MSGPENDING" /
-						"MSGCMDOUTPUT" /
-						"MSGCOMPLETED" /
-						"MSGBADCRC" /
-						brokenurl /
-						parseerror /
-						execerror /
-						ucierror /
-						undeferror
+answer  = ( 'MSGACCEPTED' / 
+						'MSGCOMPLETED' /
+            'MSGEXECERROR' / 
+            'MSGUNDEFERROR' /
+						'MSGBADCRC' <originalmsg> /
+            'MSGPARSEERROR' <originalmsg> /
+            msgtask /
+            cmdoutput /
 
-parseerror = "MSGPARSEERROR"
-execerror  = "MSGEXECERROR" ( package / executable / script )
-undeferror = "MSGUNDEFERROR" 
+msgtask    = 'MSGTASK' 
+cmdoutput  = 'MSGCMDOUTPUT' <cmdoutput>
 ```
 
 Note that if a message is _HEAVILY_ unreadable -meaning we did not even succeed
@@ -70,11 +80,17 @@ to read up to the message id, we send it back with a zeroed `msgid`.
 
 Note that the device may send:
 * `MSGACCEPTED` in a first round, to notify the server that the message had an acceptable format
-* `MSGPENDING` is used to signal that the message was the source of a time-consuming operation that may finish later on.
+* `MSGTASK` is issued when a task has been created to notify the server of that task's ID.
 * `MSGCMDOUTPUT` to notify the server of additional output the command may generate
 * `MSGCOMPLETED` as soon as the operation is finished; however `COMPLETED` does not make much sense for a firmware upgrade.
 
 ## Compile
+
+### Dependencies
+
+satan depends on czmq (and an underlying ZeroMQ v3.x) and uci packages to build.
+You can use the collection of [zeromq OpenWRT Makefiles](https://github.com/vperron/openwrt-zmq-packages) to
+build zeromq v3 and czmq on your image.
 
 ### As an OpenWRT package:
 
@@ -101,7 +117,6 @@ And you're done.
 
 There is almost no use of satan if not on the remote router.
 Still, you can still try and compile it for fun or testing purposes, there is a standard autotools-powered compilation process.
-satan depends on czmq (and an underlying ZeroMQ v3.x) and uci packages to build.
 
 ```bash
 ./autogen.sh
@@ -125,26 +140,33 @@ satan -s tcp://myserver:7889 -p tcp://localhost:1337 -u 9f804aa8172944c683e7213e
 
 ## UCI options
 
-* satan.info.thing_uid
-The thing uid is also the SUBSCRIBE topic satan listens to.
+* satan.info.uid
+
+The uid is also the SUBSCRIBE topic satan listens to.
 It should be a 32-byte unique ID.
 
 * satan.subscribe.endpoint
+
 Endpoint on which satan listens to.
 
 * satan.subscribe.hwm
+
 High-water mark to use on SUB socket.
 
 * satan.subscribe.linger
+
 Linger to use on SUB socket.
 
 * satan.answer.endpoint
+
 Endpoint that satan uses to PUSH answer messages.
 
 * satan.answer.hwm
+
 High-water mark to use on PUSH socket.
 
 * satan.answer.linger
+
 Linger to use on PUSH socket.
 
 ## License

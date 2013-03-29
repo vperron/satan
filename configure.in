@@ -156,7 +156,7 @@ AC_C_VOLATILE
 
 # These options are GNU compiler specific.
 if test "x$GCC" = "xyes"; then
-    CFLAGS="-fPIC -std=c99 -Wno-unused-function -Wno-unused-variable ${CFLAGS}"
+    CFLAGS="-fPIC -std=c99 ${CFLAGS}"
 		LDFLAGS="-fPIC ${LDFLAGS}"
 fi
 AC_SUBST(CFLAGS)

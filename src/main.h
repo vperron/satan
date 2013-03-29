@@ -20,6 +20,7 @@
  */
 
 #include <stdio.h>
+#include <unistd.h>
 
 #ifndef _MAIN_H_
 #define _MAIN_H_ 
@@ -46,6 +47,14 @@
 
 #define MAX_STRING_LEN 256
 #define str_equals(a,b) strncmp(a,b,MAX_STRING_LEN) == 0
+
+
+typedef struct s_process_item_t {
+  pid_t pid;
+  char *message_id;
+  char *command;
+} process_item;
+
 
 /*
  * GLOBAL variables declaration
