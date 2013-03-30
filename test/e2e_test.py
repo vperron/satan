@@ -19,7 +19,7 @@ If you want to run a single test, run:
 
 """
 
-device_id = "testtesttesttesttesttesttesttest"
+device_id = "test"
 pub_endpoint = "tcp://localhost:10080"
 pull_endpoint = "tcp://localhost:10081"
 with open("/dev/urandom") as f:

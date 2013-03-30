@@ -2,11 +2,11 @@
 
 Barebone remote management tool for OpenWRT.
 
-* Lightweight
+* Extremely lightweight: a single deamon of a few KBs.
 * NAT-traversing
 * Server-initiated PUSH/PULL files, EXEC stuff onto remote device.
 * Uses the awesome [ZMQ3](http://www.zeromq.org/) protocol
-* Future releases: will use ZMQ3 new security layer.
+* Security is coming: will use ZMQ3 new security layer.
 
 ## Architecture
 
@@ -43,8 +43,8 @@ kill   = 'KILL' <task_id>
 
 #### Parameters
 
-* `uuid` is the private device unique ID to address to
-* `msgid` a unique ID to the message and all of its answers.
+* `uuid` is the private device unique ID to address. Minimum 4 chars.
+* `msgid` a unique ID to the message and all of its answers. Minimum 4 chars.
 * `checksum` is a control sum for the message arguments, calculated using Paul Hsieh's [superfasthash](http://www.azillionmonkeys.com/qed/hash.html)
 * `binaryblob` is any arbitrary binary blob: script, firmware image, package...
 

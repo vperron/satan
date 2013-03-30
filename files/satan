@@ -1,5 +1,5 @@
 config section 'info'
-	option uid 'testtesttesttesttesttesttesttest'
+	option uid 'my_uid'
 
 config section 'subscribe'
 	option endpoint 'tcp://localhost:10080'

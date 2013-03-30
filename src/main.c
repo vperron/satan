@@ -52,8 +52,7 @@
 
 #define SATAN_CHECKSUM_SIZE 4
 #define SATAN_PUSH_ARGS_LEN 4
-#define SATAN_UUID_LEN 16*2
-#define SATAN_MSGID_LEN 16*2  /*  Libuuid's uuid len, converted to string */
+#define MIN_UUID_LEN 4
 
 typedef struct _satan_args_t {
 	void *pipe;
@@ -156,11 +155,11 @@ int s_parse_message(zmsg_t *message, char** msgid, uint8_t *command, zmsg_t** ar
 
 	/*  Pop arguments one by one, check them */
 	_uuid = zmsg_popstr(duplicate);
-	if (_uuid == NULL || strlen(_uuid) != SATAN_UUID_LEN) goto s_parse_unreadable;
+	if (_uuid == NULL || strlen(_uuid) < MIN_UUID_LEN) goto s_parse_unreadable;
 	_computedsum = SuperFastHash((uint8_t*)_uuid,strlen(_uuid), 0);
 
 	_msgid = zmsg_popstr(duplicate);
-	if (_msgid == NULL || strlen(_msgid) != SATAN_MSGID_LEN) goto s_parse_unreadable;
+	if (_msgid == NULL || strlen(_msgid) < MIN_UUID_LEN) goto s_parse_unreadable;
 	_computedsum = SuperFastHash((uint8_t*)_msgid,strlen(_msgid),_computedsum);
 
 	*msgid = strdup(_msgid);
