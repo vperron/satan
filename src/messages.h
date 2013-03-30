@@ -3,7 +3,7 @@
  *
  *   @file messages.h
  *   @author Victor Perron (), victor@iso3103.net
- *   
+ *
  *        Version:  1.0
  *        Created:  03/29/2013 03:52:49 PM
  *        Company:  Locarise
@@ -11,7 +11,7 @@
  *   @section DESCRIPTION
  *
  *       Message-related routine defintions
- *       
+ *
  *   @section LICENSE
  *
  *       LGPLv2.1
@@ -55,11 +55,11 @@
 #define MSG_ANSWER_UNDEFERROR        0x20
 #define MSG_ANSWER_TASK              0xC0
 
-pid_t messages_exec(const char* device_id, const char* msgid, const char* push_endpoint, const char* cmd);
-int messages_push(char* msgid, zmsg_t* arguments);
+pid_t messages_exec(const char *device_id, const char *msgid, const char *push_endpoint, const char *cmd);
+int messages_push(char *msgid, zmsg_t *arguments);
 
-zmsg_t *messages_parse_result2msg(char* device_id, int code, char* msgid, zmsg_t* original);
-zmsg_t *messages_exec_result2msg(char* device_id, int code, char* msgid);
+zmsg_t *messages_parse_result2msg(char *device_id, int code, char *msgid, zmsg_t *original);
+zmsg_t *messages_exec_result2msg(char *device_id, int code, char *msgid);
 
 
 #endif // _SATAN_MESSAGE_H_

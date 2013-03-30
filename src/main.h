@@ -3,18 +3,18 @@
  *
  *   @file main.h
  *   @author Victor Perron (), victor@iso3103.net
- *   
+ *
  *        Version:  1.0
  *        Created:  09/20/2012 08:26:35 PM
- *        
+ *
  *
  *   @section DESCRIPTION
  *
  *       General headers
- *       
+ *
  *   @section LICENSE
  *
- *      LGPL http://www.gnu.org/licenses/lgpl.html 
+ *      LGPL http://www.gnu.org/licenses/lgpl.html
  *
  * =====================================================================================
  */
@@ -23,7 +23,7 @@
 #include <unistd.h>
 
 #ifndef _MAIN_H_
-#define _MAIN_H_ 
+#define _MAIN_H_
 
 #define errorLog(fmt, ...) \
 	do { \
@@ -39,7 +39,7 @@
 	} while(0)
 
 #else
-#define debugLog(fmt, ...) 
+#define debugLog(fmt, ...)
 #endif
 
 #define STATUS_OK 0

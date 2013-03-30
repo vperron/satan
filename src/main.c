@@ -3,14 +3,14 @@
  *
  *   @file main.c
  *   @author Victor Perron (), victor@iso3103.net
- *   
+ *
  *        Version:  1.0
  *        Created:  10/21/2012 07:49:49 PM
- *        
+ *
  *
  *   @section DESCRIPTION
  *
- *       
+ *
  *   @section LICENSE
  *
  *       LGPL (http://www.gnu.org/licenses/lgpl.html)
@@ -56,12 +56,12 @@
 #define SATAN_MSGID_LEN 16*2  /*  Libuuid's uuid len, converted to string */
 
 typedef struct _satan_args_t {
-	void* pipe;
-	void* inbox;
+	void *pipe;
+	void *inbox;
 
 	void *sub_socket;
 	char *sub_endpoint;
-	char *device_uuid; 
+	char *device_uuid;
 	int sub_hwm;
 	int sub_linger;
 
@@ -84,36 +84,36 @@ static void s_int_handler(int foo)
 	zctx_interrupted = true;
 }
 
-static void s_handle_cmdline(satan_args_t* args, int argc, char** argv) {
+static void s_handle_cmdline(satan_args_t *args, int argc, char** argv) {
 	int flags = 0;
 
 	while (1+flags < argc && argv[1+flags][0] == '-') {
 		switch (argv[1+flags][1]) {
-			case 's': 
-				if(flags+2<argc) {
+			case 's':
+				if (flags+2<argc) {
 					flags++;
 					args->sub_endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
 				} else {
 					errorLog("Error: Please specify a valid endpoint !");
 				}
 				break;
-			case 'u': 
-				if(flags+2<argc) {
+			case 'u':
+				if (flags+2<argc) {
 					flags++;
 					args->device_uuid = strndup(argv[1+flags],MAX_STRING_LEN);
 				} else {
 					errorLog("Error: Please specify a valid uuid !");
 				}
 				break;
-			case 'p': 
-				if(flags+2<argc) {
+			case 'p':
+				if (flags+2<argc) {
 					flags++;
 					args->push_endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
 				} else {
 					errorLog("Error: Please specify a valid endpoint !");
 				}
 				break;
-			case 'h': 
+			case 'h':
 				s_help();
 				break;
 			default:
@@ -129,10 +129,10 @@ static void s_handle_cmdline(satan_args_t* args, int argc, char** argv) {
 
 }
 
-int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** arguments) 
+int s_parse_message(zmsg_t *message, char** msgid, uint8_t *command, zmsg_t** arguments)
 {
-	zmsg_t* duplicate = NULL;
-	zmsg_t* _arguments = NULL;
+	zmsg_t *duplicate = NULL;
+	zmsg_t *_arguments = NULL;
 	uint8_t _intcmd;
 	uint32_t _computedsum;
 	int ret;
@@ -152,26 +152,26 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 	duplicate = zmsg_dup(message); // Work on a copy
 
 	/*  Check that the message is at least 3 times multipart */
-	if(zmsg_size(duplicate) < 4) goto s_parse_unreadable;
+	if (zmsg_size(duplicate) < 4) goto s_parse_unreadable;
 
 	/*  Pop arguments one by one, check them */
 	_uuid = zmsg_popstr(duplicate);
-	if(_uuid == NULL || strlen(_uuid) != SATAN_UUID_LEN) goto s_parse_unreadable;
+	if (_uuid == NULL || strlen(_uuid) != SATAN_UUID_LEN) goto s_parse_unreadable;
 	_computedsum = SuperFastHash((uint8_t*)_uuid,strlen(_uuid), 0);
 
-	_msgid = zmsg_popstr(duplicate); 
-	if(_msgid == NULL || strlen(_msgid) != SATAN_MSGID_LEN) goto s_parse_unreadable;
+	_msgid = zmsg_popstr(duplicate);
+	if (_msgid == NULL || strlen(_msgid) != SATAN_MSGID_LEN) goto s_parse_unreadable;
 	_computedsum = SuperFastHash((uint8_t*)_msgid,strlen(_msgid),_computedsum);
 
 	*msgid = strdup(_msgid);
 
 	_command = zmsg_popstr(duplicate);
-	if(_command == NULL) goto s_parse_unreadable;
+	if (_command == NULL) goto s_parse_unreadable;
 	_computedsum = SuperFastHash((uint8_t*)_command,strlen(_command),_computedsum);
 
-	if(str_equals(_command,MSG_COMMAND_STR_PUSH)) {
+	if (str_equals(_command,MSG_COMMAND_STR_PUSH)) {
 		_intcmd = MSG_COMMAND_PUSH;
-	} else if(str_equals(_command,MSG_COMMAND_STR_EXEC)) {
+	} else if (str_equals(_command,MSG_COMMAND_STR_EXEC)) {
 		_intcmd = MSG_COMMAND_EXEC;
 	} else {
 		goto s_parse_parseerror;
@@ -181,21 +181,21 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 
 	_arguments = zmsg_dup(duplicate); // Save the arguments somewhere
 
-	switch(_intcmd) {
+	switch (_intcmd) {
 		case MSG_COMMAND_EXEC:
 			{
 				_exec = zmsg_popstr(duplicate);
-				if(_exec == NULL) goto s_parse_parseerror;
+				if (_exec == NULL) goto s_parse_parseerror;
 				_computedsum = SuperFastHash((uint8_t*)_exec,strlen(_exec),_computedsum);
 			} break;
 		case MSG_COMMAND_PUSH:
 			{
 				_bin = zmsg_pop(duplicate);
-				if(_bin == NULL) goto s_parse_parseerror;
+				if (_bin == NULL) goto s_parse_parseerror;
 				_computedsum = SuperFastHash(zframe_data(_bin),zframe_size(_bin),_computedsum);
-        if(zmsg_size(duplicate) > 1) {
+        if (zmsg_size(duplicate) > 1) {
           char *filename = zmsg_popstr(duplicate);
-          if(filename == NULL) goto s_parse_parseerror;
+          if (filename == NULL) goto s_parse_parseerror;
           _computedsum = SuperFastHash((uint8_t*)filename,strlen(filename),_computedsum);
           free(filename);
         }
@@ -204,13 +204,13 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 			break;
 	}
 
-	if(zmsg_size(duplicate) != 1 || zmsg_content_size(duplicate) != SATAN_CHECKSUM_SIZE)
+	if (zmsg_size(duplicate) != 1 || zmsg_content_size(duplicate) != SATAN_CHECKSUM_SIZE)
 		goto  s_parse_parseerror;
 
 	/* Verify checksum */
 	_chksumframe = zmsg_pop(duplicate);
 	uint32_t _chksum = get32bits(zframe_data(_chksumframe));
-	if(_chksum != _computedsum) 
+	if (_chksum != _computedsum)
 		goto s_parse_badcrc;
 
 	/*  Pop off the checksum from arguments before returning */
@@ -221,15 +221,15 @@ int s_parse_message(zmsg_t* message, char** msgid, uint8_t* command, zmsg_t** ar
 
 s_parse_finish: /*  Free everything */
 
-	if(_uuid) free(_uuid);
-  if(_msgid) free(_msgid);
-	if(_command) free(_command);
-	if(_exec) free(_exec);
+	if (_uuid) free(_uuid);
+  if (_msgid) free(_msgid);
+	if (_command) free(_command);
+	if (_exec) free(_exec);
 
-	if(_bin) zframe_destroy(&_bin);
-	if(_chksumframe) zframe_destroy(&_chksumframe);
+	if (_bin) zframe_destroy(&_bin);
+	if (_chksumframe) zframe_destroy(&_chksumframe);
 
-	if(_arguments) zmsg_destroy(&_arguments);
+	if (_arguments) zmsg_destroy(&_arguments);
 
 	zmsg_destroy(&duplicate);
 	return ret;
@@ -247,14 +247,14 @@ s_parse_parseerror:
 	goto s_parse_finish;
 }
 
-static int s_process_message(satan_args_t* args, char* msgid, uint8_t command, zmsg_t* arguments) 
+static int s_process_message(satan_args_t *args, char *msgid, uint8_t command, zmsg_t *arguments)
 {
 	assert(args);
   assert(msgid);
 
 	int ret = MSG_ANSWER_UNDEFERROR;
 
-	switch(command) {
+	switch (command) {
 		case MSG_COMMAND_EXEC:
       {
         char *cmd = zmsg_popstr(arguments);
@@ -262,7 +262,7 @@ static int s_process_message(satan_args_t* args, char* msgid, uint8_t command, z
         if (pid == -1) {
           ret = MSG_ANSWER_EXECERROR;
         } else {
-          zmsg_t* msg = zmsg_new();
+          zmsg_t *msg = zmsg_new();
           zframe_t *frame = zframe_new(&pid, sizeof(pid_t));
           zmsg_push(msg, frame);
           zmsg_pushstr(msg, "%s", cmd);
@@ -280,14 +280,14 @@ static int s_process_message(satan_args_t* args, char* msgid, uint8_t command, z
 	return ret;
 }
 
-static void s_check_children_termination(zlist_t *processlist, char* device_id, void* socket)
+static void s_check_children_termination(zlist_t *processlist, char *device_id, void *socket)
 {
   int status;
   process_item *item = zlist_first(processlist);
-  while(item != NULL) {
+  while (item != NULL) {
     // TODO make this act on THREADS
     if (waitpid(item->pid, &status, WNOHANG) != 0) {
-      zmsg_t* answer = zmsg_new();
+      zmsg_t *answer = zmsg_new();
       zmsg_pushstr(answer, "%s", MSG_ANSWER_STR_COMPLETED);
       zmsg_pushstr(answer, "%s", item->message_id);
       zmsg_pushstr(answer, "%s", device_id);
@@ -301,14 +301,14 @@ static void s_check_children_termination(zlist_t *processlist, char* device_id, 
   }
 }
 
-static void s_server_message (satan_args_t* args, zmsg_t *message) 
+static void s_server_message (satan_args_t *args, zmsg_t *message)
 {
   /*  Server message, to be processed  */
   uint8_t command;
   int ret = STATUS_ERROR;
   zmsg_t *arguments = NULL;
   char *msgid = NULL;
-  zmsg_t* answer = NULL;
+  zmsg_t *answer = NULL;
 
   ret = s_parse_message(message, &msgid, &command, &arguments);
   answer = messages_parse_result2msg(args->device_uuid, ret, msgid, message);
@@ -322,15 +322,15 @@ static void s_server_message (satan_args_t* args, zmsg_t *message)
     zmsg_send(&answer, args->push_socket);
   }
 
-  if(msgid)
+  if (msgid)
     free(msgid);
-  if(arguments) 
+  if (arguments)
     zmsg_destroy(&arguments);
 }
 
 static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
 {
-	satan_args_t* args = (satan_args_t*)user_args;
+	satan_args_t *args = (satan_args_t*)user_args;
   zlist_t *process_items = zlist_new();
 
 	while (!zctx_interrupted) {
@@ -340,12 +340,12 @@ static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
 
     s_check_children_termination(process_items, args->device_uuid, args->push_socket);
 
-    if (zsocket_poll(pipe, 500)) { 
-      zmsg_t* message = zmsg_recv (pipe);
-      if(!message) continue;
+    if (zsocket_poll(pipe, 500)) {
+      zmsg_t *message = zmsg_recv (pipe);
+      if (!message) continue;
 
-      char* header = zmsg_popstr(message);
-      if(str_equals(header, MSG_INTERNAL)) {
+      char *header = zmsg_popstr(message);
+      if (str_equals(header, MSG_INTERNAL)) {
         process_item *item = utils_msg2processitem(message);
         zlist_append(process_items, item);
       } else if (str_equals(header, MSG_SERVER)) {
@@ -362,12 +362,12 @@ static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
 
 int main(int argc, char *argv[])
 {
-	satan_args_t* args = malloc(sizeof(satan_args_t));
+	satan_args_t *args = malloc(sizeof(satan_args_t));
 
 	memset(args,0,sizeof(args));
 
   /*  Get UCI configuration, if any.  */
-	config_context* cfg_ctx = config_new();
+	config_context *cfg_ctx = config_new();
 	config_get_str(cfg_ctx,CONF_SUBSCRIBE_ENDPOINT,&args->sub_endpoint);
 	config_get_str(cfg_ctx,CONF_DEVICE_UUID,&args->device_uuid);
 	args->sub_hwm = config_get_int(cfg_ctx, CONF_SUBSCRIBE_HWM);
@@ -385,7 +385,7 @@ int main(int argc, char *argv[])
 	args->sub_socket = zeromq_create_socket(zmq_ctx, args->sub_endpoint, ZMQ_SUB,
 			args->device_uuid, true, args->sub_linger, args->sub_hwm);
 	assert(args->sub_socket != NULL);
-	args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH, 
+	args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH,
 			NULL, true, args->req_linger, args->req_hwm);
 	assert(args->push_socket != NULL);
 
@@ -393,11 +393,11 @@ int main(int argc, char *argv[])
 	args->pipe = zthread_fork(zmq_ctx, s_worker_loop, args);
 
 	/*  Main listener loop */
-	while(!zctx_interrupted) {
-		if (zsocket_poll(args->sub_socket, 1000)) { 
+	while (!zctx_interrupted) {
+		if (zsocket_poll(args->sub_socket, 1000)) {
 			zmsg_t *message = zmsg_recv (args->sub_socket);
-			if(message){ 
-				if(!args->pipe) break;
+			if (message){
+				if (!args->pipe) break;
         zmsg_pushstr(message, MSG_SERVER);
         zmsg_send(&message,args->pipe);
 			}

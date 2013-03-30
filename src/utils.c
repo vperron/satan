@@ -3,15 +3,15 @@
  *
  *   @file utils.c
  *   @author Victor Perron (), victor@iso3103.net
- *   
+ *
  *        Version:  1.0
  *        Created:  03/29/2013 03:51:20 PM
  *        Company:  Locarise
  *
  *   @section DESCRIPTION
  *
- *       
- *       
+ *
+ *
  *   @section LICENSE
  *
  *       LGPLv2.1
@@ -34,10 +34,10 @@
 
 #define LONG_BUFFER_LEN 2000
 
-zmsg_t *utils_gen_msg(const char* device_id, const char* msgid, const char* msg, char* bytes, int len)
+zmsg_t *utils_gen_msg(const char *device_id, const char *msgid, const char *msg, char *bytes, int len)
 {
   zmsg_t *answer = zmsg_new();
-  if(bytes != NULL) {
+  if (bytes != NULL) {
     zframe_t *frame = zframe_new (bytes, len);
     zmsg_push(answer, frame);
   }
@@ -47,7 +47,7 @@ zmsg_t *utils_gen_msg(const char* device_id, const char* msgid, const char* msg,
   return answer;
 }
 
-void s_monitored_execution(void* socket, const char* device_id, const char* msgid, const char *cmd)
+void s_monitored_execution(void *socket, const char *device_id, const char *msgid, const char *cmd)
 {
   assert(socket);
   assert(device_id);
@@ -66,7 +66,7 @@ void s_monitored_execution(void* socket, const char* device_id, const char* msgi
   while ( fgets(buffer, MAX_STRING_LEN, stream) != NULL ) {
     buffer_len = strlen(buffer);
     if (answer_len + buffer_len >= LONG_BUFFER_LEN) {
-      zmsg_t* msg = utils_gen_msg(device_id, msgid, 
+      zmsg_t *msg = utils_gen_msg(device_id, msgid,
           MSG_ANSWER_STR_CMDOUTPUT, answer, answer_len);
       zmsg_send(&msg, socket);
 
@@ -78,15 +78,15 @@ void s_monitored_execution(void* socket, const char* device_id, const char* msgi
     answer_len += buffer_len;
   }
   if (answer_len != 0) {
-    zmsg_t* msg = utils_gen_msg(device_id, msgid, 
+    zmsg_t *msg = utils_gen_msg(device_id, msgid,
         MSG_ANSWER_STR_CMDOUTPUT, answer, answer_len);
     zmsg_send(&msg, socket);
   }
   pclose(stream);
 }
 
-pid_t utils_execute_task(const char* cmd,  const char *device_id, 
-    const char* msgid, const char* push_endpoint)
+pid_t utils_execute_task(const char *cmd,  const char *device_id,
+    const char *msgid, const char *push_endpoint)
 {
   assert(cmd);
   assert(msgid);
@@ -96,7 +96,7 @@ pid_t utils_execute_task(const char* cmd,  const char *device_id,
   pid_t process_id = fork();
   if (!process_id) {
     zctx_t *zmq_ctx = zctx_new ();
-    void* socket = zeromq_create_socket(zmq_ctx, push_endpoint, ZMQ_PUSH, NULL, true, -1, -1);
+    void *socket = zeromq_create_socket(zmq_ctx, push_endpoint, ZMQ_PUSH, NULL, true, -1, -1);
     s_monitored_execution(socket, device_id, msgid, cmd);
     sleep(1); // Give some time to send the latest messages
     zsocket_destroy (zmq_ctx, socket);
@@ -107,7 +107,7 @@ pid_t utils_execute_task(const char* cmd,  const char *device_id,
   return process_id;
 }
 
-int utils_write_file(const char* file_name, const char* data, int len) 
+int utils_write_file(const char *file_name, const char *data, int len)
 {
 	int written = 0;
 
@@ -131,9 +131,9 @@ process_item *utils_msg2processitem(zmsg_t *message)
 {
   process_item *item = malloc(sizeof(process_item));
 
-  char *msgid = zmsg_popstr(message); 
-  char *command = zmsg_popstr(message); 
-  zframe_t* frame = zmsg_pop(message);
+  char *msgid = zmsg_popstr(message);
+  char *command = zmsg_popstr(message);
+  zframe_t *frame = zmsg_pop(message);
   pid_t *pid = (pid_t*)frame;
   memcpy(&item->pid,pid,sizeof(pid_t));
   item->message_id = msgid;

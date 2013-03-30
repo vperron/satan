@@ -5,7 +5,7 @@ Barebone remote management tool for OpenWRT.
 * Lightweight
 * NAT-traversing
 * Server-initiated PUSH/PULL files, EXEC stuff onto remote device.
-* Uses the awesome [ZMQ3](http://www.zeromq.org/) protocol 
+* Uses the awesome [ZMQ3](http://www.zeromq.org/) protocol
 * Future releases: will use ZMQ3 new security layer.
 
 ## Architecture
@@ -31,7 +31,7 @@ Those commands are represented in the following [ABNF](http://www.ietf.org/rfc/r
 ```
 S:satan-pub = uuid msgid command checksum
 
-command =  ( push / pull / exec / tasks / kill ) 
+command =  ( push / pull / exec / tasks / kill )
 
 exec   = 'EXEC' <command>
 push   = 'PUSH' <binaryblob> [filename]
@@ -62,16 +62,16 @@ satan internally keeps track of every task alive; the MSGPENDING message is asso
 ```
 D:satan-req = uuid msgid answer | <uuid> <emptymsgid>  'UNREADABLE' <originalmsg>
 
-answer  = ( 'MSGACCEPTED' / 
+answer  = ( 'MSGACCEPTED' /
 						'MSGCOMPLETED' /
-            'MSGEXECERROR' / 
+            'MSGEXECERROR' /
             'MSGUNDEFERROR' /
 						'MSGBADCRC' <originalmsg> /
             'MSGPARSEERROR' <originalmsg> /
             msgtask /
             cmdoutput /
 
-msgtask    = 'MSGTASK' 
+msgtask    = 'MSGTASK'
 cmdoutput  = 'MSGCMDOUTPUT' <cmdoutput>
 ```
 
