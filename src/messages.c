@@ -57,7 +57,6 @@ int messages_push(char *msgid, zmsg_t *arguments)
   if (zmsg_size(arguments) > 0) {
     char *file = zmsg_popstr(arguments);
     ret = utils_write_file(file,(char*)data,size);
-    debugLog("Write file %s result %d", file, ret);
     free(file);
   } else {
     sprintf(filename, "/tmp/%s", msgid);
