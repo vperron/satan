@@ -374,7 +374,6 @@ int main(int argc, char *argv[])
 	config_get_str(cfg_ctx,CONF_ANSWER_ENDPOINT,&args->push_endpoint);
 	args->req_hwm = config_get_int(cfg_ctx, CONF_ANSWER_HWM);
 	args->req_linger = config_get_int(cfg_ctx, CONF_ANSWER_LINGER);
-	config_destroy(cfg_ctx);
 
   /*  Eventually override it with command line args.  */
 	s_handle_cmdline(args, argc, argv);
@@ -409,5 +408,6 @@ int main(int argc, char *argv[])
 
 	free(args);
 
+	config_destroy(cfg_ctx);
 	exit(0);
 }

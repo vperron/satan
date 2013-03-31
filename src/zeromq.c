@@ -41,7 +41,6 @@ void *zeromq_create_socket (zctx_t *context, const char *endpoint, int type,
 {
 
 	void *socket = NULL;
-	char _endp[MAX_STRING_LEN];
 
 	assert(context);
 	assert(endpoint);
@@ -66,11 +65,10 @@ void *zeromq_create_socket (zctx_t *context, const char *endpoint, int type,
 	if (type == ZMQ_SUB)
 		zsocket_set_subscribe (socket, (char*)(topic == NULL ? "" : topic));
 
-	strncpy(_endp, endpoint, MAX_STRING_LEN);
 	if (connect) {
-		zsocket_connect (socket, "%s", _endp);
+		zsocket_connect (socket, "%s", endpoint);
 	} else {
-		zsocket_bind (socket, "%s", _endp);
+		zsocket_bind (socket, "%s", endpoint);
 	}
 	return socket;
 }
