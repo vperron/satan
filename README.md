@@ -132,10 +132,24 @@ make
 
 ## Examples
 
+### Command line parameters
+
 Run satan onto a different zeromq SUBSCRIBE endpoint, PUSH on some other endpoint, with a custom UUID:
 
 ```bash
 satan -s tcp://myserver:7889 -p tcp://localhost:1337 -u 9f804aa8172944c683e7213e4d941850
+```
+
+### Update the firmware
+
+OpenWRT boxes typically are wuite limited on the amount of RAM available.
+ZeroMQ is a lightweight messenging protocol, and your attemps to transmit a whole firmware embedded into a PUSH command message from the server will almost inevitably fail.
+For this reason, it is probably better to make your device donload the firmware and then use `mtd write` to update it. `sysupgrade` tool will fail since its first job is to kill all the deamons (that includes its satan parent if you call it from remote)
+Here's a way to go - using the `control` python tool from this repository:
+
+```
+./control my_uid EXEC 'cd /tmp/ && wget http://myserver/openwrt-ARCH-DEVICE-xxx-squashfs-sysupgrade.bin'
+./control my_uid EXEC 'mtd -r write /tmp/openwrt-ARCH-DEVICE-xxx-squashfs-sysupgrade.bin firmware'
 ```
 
 ## UCI options
