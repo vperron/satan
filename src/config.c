@@ -2,23 +2,21 @@
  * =====================================================================================
  *
  *   @file uci.c
- *   @author Victor Perron (), victor@iso3103.net
- *
+ *   @author Victor Perron (), victor.perron@locarise.com
+ *   
  *        Version:  1.0
  *        Created:  12/19/2012 05:42:27 PM
- *
+ *        Company:  Locarise
  *
  *   @section DESCRIPTION
  *
  *       Unified Config Interface helper
- *
+ *       
  *   @section LICENSE
  *
- *      LGPL http://www.gnu.org/licenses/lgpl.html
- *
- *   This code is borrowed and adapted from uci CLI tool itself
+ *   This code is borrowed and greatly adapted from uci CLI tool itself 
  *   from nbd (Felix Fietkau)
- *
+ *       
  *
  * =====================================================================================
  */
@@ -53,40 +51,40 @@ enum {
 	CMD_HELP,
 };
 
-static int uci_cmd(struct uci_context *ctx, int cmd, char *arg, char** output)
+static int uci_cmd(struct uci_context* ctx, int cmd, char *arg, char** output)
 {
 	struct uci_element *e;
 	struct uci_ptr ptr;
 	int ret = STATUS_OK;
 	int dummy;
 	char tmp_arg[MAX_STRING_LEN];
-
+	
 	strncpy(tmp_arg,arg,MAX_STRING_LEN);
 	ret = uci_lookup_ptr(ctx, &ptr, tmp_arg, true);
-	if (ret != UCI_OK)
+	if(ret != UCI_OK)
 		return STATUS_ERROR;
 
-	if (ptr.value &&
+	if (ptr.value && 
 			(cmd != CMD_SET) && (cmd != CMD_DEL) &&
 			(cmd != CMD_ADD_LIST) && (cmd != CMD_DEL_LIST) &&
 			(cmd != CMD_RENAME) && (cmd != CMD_REORDER))
 		return STATUS_ERROR;
 
 	e = ptr.last;
-	switch (cmd) {
+	switch(cmd) {
 		case CMD_GET:
 			if (!(ptr.flags & UCI_LOOKUP_COMPLETE)) {
 				ctx->err = UCI_ERR_NOTFOUND;
 				return STATUS_ERROR;
 			}
 
-			if (output) {
-				switch (e->type) {
+			if(output) {
+				switch(e->type) {
 					case UCI_TYPE_SECTION:
 						*output = ptr.s->type;
 						break;
 					case UCI_TYPE_OPTION:
-						if (ptr.o->type == UCI_TYPE_STRING)
+						if(ptr.o->type == UCI_TYPE_STRING)
 							*output = ptr.o->v.string;
 						break;
 					default:
@@ -141,55 +139,84 @@ static int uci_cmd(struct uci_context *ctx, int cmd, char *arg, char** output)
 
 }
 
-config_context *config_new()
+config_context* config_new() 
 {
 	return uci_alloc_context();
 }
 
-void config_destroy(config_context *ctx)
+void config_destroy(config_context* ctx)
 {
 	uci_free_context(ctx);
 }
 
-int config_get_str(config_context *ctx, char *key, char** output)
+int config_get_str(config_context* ctx, char *key, char** output) 
 {
 	return uci_cmd(ctx, CMD_GET, key, output);
 }
 
-int config_get_int(config_context *ctx, char *key)
+int config_get_int(config_context* ctx, char *key) 
 {
 	int ret;
-	char *buf = NULL;
+	char* buf = NULL;
 	ret = uci_cmd(ctx, CMD_GET, key, &buf);
-	if (ret == STATUS_OK && buf != NULL)
+	if(ret == STATUS_OK && buf != NULL)
 		return atoi(buf);
 	return STATUS_ERROR;
 }
 
-double config_get_double(config_context *ctx, char *key)
+double config_get_double(config_context* ctx, char *key) 
 {
 	int ret;
-	char *buf = NULL;
+	char* buf = NULL;
 	ret = uci_cmd(ctx, CMD_GET, key, &buf);
-	if (ret == STATUS_OK && buf != NULL)
+	if(ret == STATUS_OK && buf != NULL)
 		return atof(buf);
 	return STATUS_ERROR;
 }
 
-bool config_get_bool(config_context *ctx, char *key)
+bool config_get_bool(config_context* ctx, char *key) 
 {
 	int ret = config_get_int(ctx, key);
-	if (ret != STATUS_ERROR)
+	if(ret != STATUS_ERROR)
 		return ret != 0;
-	return STATUS_ERROR;
+	return false; // return false as default
 }
 
-int config_set(config_context *ctx, char *key)
+int config_set(config_context* ctx, char *key)
 {
 	return uci_cmd(ctx, CMD_SET, key, NULL);
 }
 
-int config_commit(config_context *ctx, char *key)
+int config_commit(config_context* ctx, char *key) 
 {
 	return uci_cmd(ctx, CMD_COMMIT, key, NULL);
 }
+
+int config_get_str_ext(config_context* ctx, char *pkg, char *section, char *option, char** output)
+{
+	char key[MAX_STRING_LEN];
+	snprintf(key,MAX_STRING_LEN,"%s.%s.%s",pkg,section,option);
+	return config_get_str(ctx, key, output);
+}
+
+int config_get_int_ext(config_context* ctx, char *pkg, char *section, char *option)
+{
+	char key[MAX_STRING_LEN];
+	snprintf(key,MAX_STRING_LEN,"%s.%s.%s",pkg,section,option);
+	return config_get_int(ctx, key);
+}
+
+bool config_get_bool_ext(config_context* ctx, char *pkg, char *section, char* option)
+{
+	char key[MAX_STRING_LEN];
+	snprintf(key,MAX_STRING_LEN,"%s.%s.%s",pkg,section,option);
+	return config_get_bool(ctx, key);
+}
+
+double config_get_double_ext(config_context* ctx, char* pkg, char *section, char *option)
+{
+	char key[MAX_STRING_LEN];
+	snprintf(key,MAX_STRING_LEN,"%s.%s.%s",pkg,section,option);
+	return config_get_double(ctx, key);
+}
+
