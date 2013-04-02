@@ -40,14 +40,9 @@
 
 #define SATAN_IDENTITY "satan"
 
-#define CONF_SUBSCRIBE_ENDPOINT   "satan.subscribe.endpoint"
-#define CONF_SUBSCRIBE_HWM        "satan.subscribe.hwm"
-#define CONF_SUBSCRIBE_LINGER     "satan.subscribe.linger"
-#define CONF_ANSWER_ENDPOINT      "satan.answer.endpoint"
-#define CONF_ANSWER_HWM           "satan.answer.hwm"
-#define CONF_ANSWER_LINGER        "satan.answer.linger"
-
 #define CONF_DEVICE_UUID          "satan.info.uid"
+#define CONF_ANSWER_ENDPOINT      "satan.info.answer"
+#define CONF_SUBSCRIBE_ENDPOINT   "satan.info.subscribe"
 
 
 #define SATAN_CHECKSUM_SIZE 4
@@ -61,13 +56,9 @@ typedef struct _satan_args_t {
 	void *sub_socket;
 	char *sub_endpoint;
 	char *device_uuid;
-	int sub_hwm;
-	int sub_linger;
 
 	void *push_socket;
 	char *push_endpoint;
-	int req_hwm;
-	int req_linger;
 
 } satan_args_t;
 
@@ -369,22 +360,18 @@ int main(int argc, char *argv[])
 	config_context *cfg_ctx = config_new();
 	config_get_str(cfg_ctx,CONF_SUBSCRIBE_ENDPOINT,&args->sub_endpoint);
 	config_get_str(cfg_ctx,CONF_DEVICE_UUID,&args->device_uuid);
-	args->sub_hwm = config_get_int(cfg_ctx, CONF_SUBSCRIBE_HWM);
-	args->sub_linger = config_get_int(cfg_ctx, CONF_SUBSCRIBE_LINGER);
 	config_get_str(cfg_ctx,CONF_ANSWER_ENDPOINT,&args->push_endpoint);
-	args->req_hwm = config_get_int(cfg_ctx, CONF_ANSWER_HWM);
-	args->req_linger = config_get_int(cfg_ctx, CONF_ANSWER_LINGER);
 
   /*  Eventually override it with command line args.  */
 	s_handle_cmdline(args, argc, argv);
 
 	/*  ZeroMQ sockets init  */
   zctx_t *zmq_ctx = zctx_new ();
-	args->sub_socket = zeromq_create_socket(zmq_ctx, args->sub_endpoint, ZMQ_SUB,
-			args->device_uuid, true, args->sub_linger, args->sub_hwm);
+	
+  args->sub_socket = zeromq_create_socket(zmq_ctx, args->sub_endpoint, ZMQ_SUB, args->device_uuid, true, -1, -1);
+	args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH, NULL, true, -1, -1);
+
 	assert(args->sub_socket != NULL);
-	args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH,
-			NULL, true, args->req_linger, args->req_hwm);
 	assert(args->push_socket != NULL);
 
 	/*  Create worker thread  */

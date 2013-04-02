@@ -1,10 +1,5 @@
 config section 'info'
 	option uid 'my_uid'
+	option subscribe 'tcp://localhost:10080'
+	option answer 'tcp://localhost:10081'
 
-config section 'subscribe'
-	option endpoint 'tcp://localhost:10080'
-	option linger '0'
-	option hwm '100'
-
-config option 'answer'
-	option endpoint 'tcp://localhost:10081'
