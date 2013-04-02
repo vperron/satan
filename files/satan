@@ -2,4 +2,5 @@ config section 'info'
 	option uid 'my_uid'
 	option subscribe 'tcp://localhost:10080'
 	option answer 'tcp://localhost:10081'
+	option is_bound '0'
 

@@ -43,6 +43,7 @@
 #define CONF_DEVICE_UUID          "satan.info.uid"
 #define CONF_ANSWER_ENDPOINT      "satan.info.answer"
 #define CONF_SUBSCRIBE_ENDPOINT   "satan.info.subscribe"
+#define CONF_IS_BOUND             "satan.info.is_bound"
 
 
 #define SATAN_CHECKSUM_SIZE 4
@@ -56,6 +57,7 @@ typedef struct _satan_args_t {
 	void *sub_socket;
 	char *sub_endpoint;
 	char *device_uuid;
+  bool is_bound;
 
 	void *push_socket;
 	char *push_endpoint;
@@ -361,6 +363,7 @@ int main(int argc, char *argv[])
 	config_get_str(cfg_ctx,CONF_SUBSCRIBE_ENDPOINT,&args->sub_endpoint);
 	config_get_str(cfg_ctx,CONF_DEVICE_UUID,&args->device_uuid);
 	config_get_str(cfg_ctx,CONF_ANSWER_ENDPOINT,&args->push_endpoint);
+  args->is_bound = config_get_bool(cfg_ctx, CONF_IS_BOUND);
 
   /*  Eventually override it with command line args.  */
 	s_handle_cmdline(args, argc, argv);
@@ -368,8 +371,13 @@ int main(int argc, char *argv[])
 	/*  ZeroMQ sockets init  */
   zctx_t *zmq_ctx = zctx_new ();
 	
-  args->sub_socket = zeromq_create_socket(zmq_ctx, args->sub_endpoint, ZMQ_SUB, args->device_uuid, true, -1, -1);
-	args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH, NULL, true, -1, -1);
+  if (args->is_bound) {
+    args->sub_socket = zeromq_create_socket(zmq_ctx, args->sub_endpoint, ZMQ_SUB, args->device_uuid, false, -1, -1);
+    args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH, NULL, false, -1, -1);
+  } else {
+    args->sub_socket = zeromq_create_socket(zmq_ctx, args->sub_endpoint, ZMQ_SUB, args->device_uuid, true, -1, -1);
+    args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH, NULL, true, -1, -1);
+  }
 
 	assert(args->sub_socket != NULL);
 	assert(args->push_socket != NULL);
