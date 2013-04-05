@@ -1,14 +1,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=satan
-PKG_REV:=8cbc1e7174e66883bc0ec955efe2d197330c326c
+PKG_REV:=master
 PKG_VERSION:=master
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
 PKG_SOURCE_SUBDIR:=$(PKG_NAME)-$(PKG_VERSION)
 PKG_SOURCE_URL:=git@github.com:vperron/satan.git
-#PKG_SOURCE_URL:=file:///home/victor/work/locarise/embedded/satan
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_VERSION:=$(PKG_REV)
 
