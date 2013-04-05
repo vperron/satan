@@ -27,9 +27,11 @@ define Package/satan/description
   Configuration daemon for Locarise boards
 endef
 
+TARGET_CFLAGS=-std=c99
+
 define Build/Configure
 	( cd $(PKG_BUILD_DIR); ./autogen.sh );
-	$(call Build/Configure/Default)
+	( cd $(PKG_BUILD_DIR) && CFLAGS="$(TARGET_CFLAGS)" LDFLAGS="$(TARGET_LDFLAGS)" ./configure --enable-uci $(CONFIGURE_ARGS) )
 endef
 
 define Package/satan/install
