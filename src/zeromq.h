@@ -14,15 +14,15 @@
  *
  *   @section LICENSE
  *
- *      LGPL http://www.gnu.org/licenses/lgpl.html
+ *      LGPLv2.1 http://www.gnu.org/licenses/lgpl.html
  *
  * =====================================================================================
  */
 
 #include <czmq.h>
 
-#ifndef _GRIDEYE_DRIVER_ZEROMQ_H_
-#define _GRIDEYE_DRIVER_ZEROMQ_H_
+#ifndef _SATAN_ZEROMQ_H_
+#define _SATAN_ZEROMQ_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,4 +36,4 @@ void *zeromq_create_socket (zctx_t *context, const char *endpoint, int type,
 }
 #endif
 
-#endif
+#endif // _SATAN_ZEROMQ_H_

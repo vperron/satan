@@ -23,11 +23,20 @@
 #ifndef _SATAN_UTILS_H_
 #define _SATAN_UTILS_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 pid_t utils_execute_task(const char *cmd,  const char *device_id,
     const char *msgid, const char *push_endpoint);
+
 int utils_write_file(const char *file_name, const char *data, int len);
 
 process_item *utils_msg2processitem(zmsg_t *message);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _SATAN_UTILS_H_
 

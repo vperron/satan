@@ -24,6 +24,10 @@
 #ifndef _SATAN_MESSAGE_H_
 #define _SATAN_MESSAGE_H_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 #define MSG_COMMAND_STR_EXEC          "EXEC"
 #define MSG_COMMAND_STR_PUSH          "PUSH"
@@ -61,5 +65,8 @@ int messages_push(char *msgid, zmsg_t *arguments);
 zmsg_t *messages_parse_result2msg(char *device_id, int code, char *msgid, zmsg_t *original);
 zmsg_t *messages_exec_result2msg(char *device_id, int code, char *msgid);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _SATAN_MESSAGE_H_

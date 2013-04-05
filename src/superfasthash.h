@@ -14,7 +14,7 @@
  *       
  *   @section LICENSE
  *
- *       LGPL (http://www.gnu.org/licenses/lgpl.html)
+ *       LGPLv2.1 (http://www.gnu.org/licenses/lgpl.html)
  *       
  *
  * =====================================================================================
@@ -24,6 +24,11 @@
 
 #ifndef _SATAN_SUPERFASTHASH_H_
 #define _SATAN_SUPERFASTHASH_H_ 
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #undef get16bits
 #if (defined(__GNUC__) && defined(__i386__)) || defined(__WATCOMC__) \
@@ -42,5 +47,9 @@
 #endif
 
 uint32_t SuperFastHash (uint8_t* data, int len, uint32_t hash);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _SATAN_SUPERFASTHASH_H_

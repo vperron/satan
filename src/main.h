@@ -14,7 +14,7 @@
  *
  *   @section LICENSE
  *
- *      LGPL http://www.gnu.org/licenses/lgpl.html
+ *      LGPLv2.1 http://www.gnu.org/licenses/lgpl.html
  *
  * =====================================================================================
  */
@@ -22,8 +22,12 @@
 #include <stdio.h>
 #include <unistd.h>
 
-#ifndef _MAIN_H_
-#define _MAIN_H_
+#ifndef _SATAN_MAIN_H_
+#define _SATAN_MAIN_H_
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define errorLog(fmt, ...) \
 	do { \
@@ -48,16 +52,14 @@
 #define MAX_STRING_LEN 256
 #define str_equals(a,b) strncmp(a,b,MAX_STRING_LEN) == 0
 
-
 typedef struct s_process_item_t {
   pid_t pid;
   char *message_id;
   char *command;
 } process_item;
 
-
-/*
- * GLOBAL variables declaration
- */
-
+#ifdef __cplusplus
+}
 #endif
+
+#endif // _SATAN_MAIN_H_
