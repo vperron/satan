@@ -10,12 +10,11 @@ Barebone remote management tool for OpenWRT.
 
 ## Architecture
 
-*satan* [UCI](http://wiki.openwrt.org/doc/uci) configuration file lets you define two ZeroMQ endpoints:
+*satan* receives its commands from a "command server" located at a configurable address.
+A zeromq SUBSCRIBE endpoint will be used to receive the commands, and a PUSH zeromq channel is used to send back answers to the server.
+The minion itself on the device is identified by an unique UID, that the server uses to address it.
 
-* a SUBSCRIBE socket which will enable PUSH notifications from server to be received
-* a PUSH socket to send any kind of information back.
-
-Those options can also be set from the command line.
+Those options are configurable either on the command line or using an [UCI](http://wiki.openwrt.org/doc/uci) configuration file on OpenWRT.
 
 ## Command structure
 
@@ -52,10 +51,16 @@ kill   = 'KILL' <task_id>
 
 * EXEC allows you to run any arbitrary command on the remote device and watch its output from the server.
 satan internally keeps track of every task alive; the MSGPENDING message is associated with a `task\_id` that you can us in the KILL command to terminate the task; the MSGCOMPLETED message is issued when the task ends.
+* The PUSH command allows you to push any blob of data onto the device. It will be saved into the `/tmp/<msgid>` file unless you soecify the optional `filename` argument.
 * Use TASKS command to list the current active tasks on the remote. Every task is associated with its original message ID and complete command, to easily identify it.
 * The KILL command enables you to easily kill a task that you find disturbing and remove it from satan's internal task list.
-* The PUSH command allows you to push any blob of data onto the device. It will be saved into the `/tmp/<msgid>` file unless you soecify the optional `filename` argument.
 * The PULL command does the opposite; it enables you to retrieve a file from the remote as designated by the `filename` parameter.
+
+
+#### Implementation status
+
+* EXEC: Implemented
+* PUSH: Implemented
 
 ### Client answers
 
@@ -88,7 +93,7 @@ Note that the device may send:
 
 ### Dependencies
 
-satan depends on czmq (and an underlying ZeroMQ v3.x) and uci packages to build.
+satan depends on czmq (and an underlying ZeroMQ v3.x). The OpenWRT build also makes use of libuci to read its unified configuration file.
 You can use the collection of [zeromq OpenWRT Makefiles](https://github.com/vperron/openwrt-zmq-packages) to
 build zeromq v3 and czmq on your image.
 
@@ -137,7 +142,7 @@ make
 Run satan onto a different zeromq SUBSCRIBE endpoint, PUSH on some other endpoint, with a custom UUID:
 
 ```bash
-satan -s tcp://myserver:7889 -p tcp://localhost:1337 -u 9f804aa8172944c683e7213e4d941850
+satan -s tcp://myserver:7889 -p tcp://localhost:1337 -u my_minion_uid
 ```
 
 ### Update the firmware
@@ -159,29 +164,14 @@ Here's a way to go - using the `control` python tool from this repository:
 The uid is also the SUBSCRIBE topic satan listens to.
 It should be a 32-byte unique ID.
 
-* satan.subscribe.endpoint
+* satan.info.subscribe
 
 Endpoint on which satan listens to.
 
-* satan.subscribe.hwm
-
-High-water mark to use on SUB socket.
-
-* satan.subscribe.linger
-
-Linger to use on SUB socket.
-
-* satan.answer.endpoint
+* satan.info.answer
 
 Endpoint that satan uses to PUSH answer messages.
 
-* satan.answer.hwm
-
-High-water mark to use on PUSH socket.
-
-* satan.answer.linger
-
-Linger to use on PUSH socket.
 
 ## License
 
