@@ -1,5 +1,8 @@
-
-INCLUDES = -Wall -Werror -g -ggdb -O2 -DDEBUG $(zeromq_CFLAGS) -Iinclude
+if DEBUG_ENABLED
+AM_CFLAGS = -Wall -Werror -g -ggdb -DDEBUG -std=c99 $(zeromq_CFLAGS)
+else
+AM_CFLAGS = -Wall -Werror -Os -s -std=c99 -DNDEBUG $(zeromq_CFLAGS)
+endif
 
 bin_PROGRAMS = satan
 
