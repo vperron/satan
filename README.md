@@ -1,4 +1,6 @@
-# satan
+
+satan
+=====
 
 Barebone remote management tool for OpenWRT.
 
@@ -8,7 +10,9 @@ Barebone remote management tool for OpenWRT.
 * Uses the awesome [ZMQ3](http://www.zeromq.org/) protocol
 * Security is coming: will use ZMQ3 new security layer.
 
-## Architecture
+
+Architecture
+------------
 
 *satan* receives its commands from a "command server" located at a configurable address.
 A zeromq SUBSCRIBE endpoint will be used to receive the commands, and a PUSH zeromq channel is used to send back answers to the server.
@@ -16,7 +20,7 @@ The minion itself on the device is identified by an unique UID, that the server 
 
 Those options are configurable either on the command line or using an [UCI](http://wiki.openwrt.org/doc/uci) configuration file on OpenWRT.
 
-## Command structure
+### Command structure
 
 satan allows you to send commands wrapped into ZeroMQ frames.
 
@@ -25,7 +29,7 @@ satan allows you to send commands wrapped into ZeroMQ frames.
 
 Those commands are represented in the following [ABNF](http://www.ietf.org/rfc/rfc2234.txt) grammar [D stands for device, S for server] :
 
-### Server commands
+#### Server commands
 
 ```
 S:satan-pub = uuid msgid command checksum
@@ -40,14 +44,14 @@ kill   = 'KILL' <task_id>
 
 ```
 
-#### Parameters
+###### Parameters
 
 * `uuid` is the private device unique ID to address. Minimum 4 chars.
 * `msgid` a unique ID to the message and all of its answers. Minimum 4 chars.
 * `checksum` is a control sum for the message arguments, calculated using Paul Hsieh's [superfasthash](http://www.azillionmonkeys.com/qed/hash.html)
 * `binaryblob` is any arbitrary binary blob: script, firmware image, package...
 
-##### Command use
+###### Command use
 
 * EXEC allows you to run any arbitrary command on the remote device and watch its output from the server.
 satan internally keeps track of every task alive; the MSGPENDING message is associated with a `task\_id` that you can us in the KILL command to terminate the task; the MSGCOMPLETED message is issued when the task ends.
@@ -57,12 +61,7 @@ satan internally keeps track of every task alive; the MSGPENDING message is asso
 * The PULL command does the opposite; it enables you to retrieve a file from the remote as designated by the `filename` parameter.
 
 
-#### Implementation status
-
-* EXEC: Implemented
-* PUSH: Implemented
-
-### Client answers
+#### Client answers
 
 ```
 D:satan-req = uuid msgid answer | <uuid> <emptymsgid>  'UNREADABLE' <originalmsg>
@@ -89,7 +88,9 @@ Note that the device may send:
 * `MSGCMDOUTPUT` to notify the server of additional output the command may generate
 * `MSGCOMPLETED` as soon as the operation is finished; however `COMPLETED` does not make much sense for a firmware upgrade.
 
-## Compile
+
+Compile
+-------
 
 ### Dependencies
 
@@ -129,13 +130,17 @@ Still, you can still try and compile it for fun or testing purposes, there is a 
 make
 ```
 
-## Getting Started on OpenWRT
+
+Getting Started on OpenWRT
+--------------------------
 
 * Install the package.
 * The app automatically imports its configuration from `/etc/config/satan` UCI file.
 * You can override some parameters; run  `satan -h` to check that out.
 
-## Examples
+
+Examples
+--------
 
 ### Command line parameters
 
@@ -157,12 +162,13 @@ Here's a way to go - using the `control` python tool from this repository:
 ./control my_uid EXEC 'mtd -r write /tmp/openwrt-ARCH-DEVICE-xxx-squashfs-sysupgrade.bin firmware'
 ```
 
-## UCI options
+
+UCI options
+-----------
 
 * satan.info.uid
 
 The uid is also the SUBSCRIBE topic satan listens to.
-It should be a 32-byte unique ID.
 
 * satan.info.subscribe
 
@@ -172,7 +178,27 @@ Endpoint on which satan listens to.
 
 Endpoint that satan uses to PUSH answer messages.
 
+Changelog
+---------
 
-## License
+### 0.2.2
+
+**Date**: 10th April 2013
+
+* Complete rewrite
+* EXEC and PUSH commands available 
+* Python tests and examples
+* Dependency on libuci made optional
+* --enable-debug flag at configure time
+
+### 0.1.0 (28 March 2013)
+
+* Parsing of all the commands is working
+* UCILINE and COMMAND commands are actually supported
+* Main architecture and tests are present
+
+
+License
+-------
 
 Free use of this software is granted under the terms of the GNU Lesser General Public License (LGPL). For details see the files COPYING and COPYING.LESSER included with satan.
