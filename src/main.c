@@ -59,6 +59,8 @@
 #define SATAN_PUSH_ARGS_LEN 4
 #define MIN_UUID_LEN 4
 
+#define MAIN_SLEEP_TIME 100 // 100ms
+
 typedef struct _satan_args_t {
   void *pipe;
   void *inbox;
@@ -341,7 +343,7 @@ static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
 
     s_check_children_termination(process_items, args->device_uuid, args->push_socket);
 
-    if (zsocket_poll(pipe, 500)) {
+    if (zsocket_poll(pipe, 0)) {
       zmsg_t *message = zmsg_recv (pipe);
       if (!message) continue;
 
@@ -355,6 +357,7 @@ static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
 
       zmsg_destroy(&message);
     }
+    usleep(MAIN_SLEEP_TIME*1000);
   }
 
   zlist_destroy(&process_items);
@@ -406,7 +409,7 @@ int main(int argc, char *argv[])
 
   /*  Main listener loop */
   while (!zctx_interrupted) {
-    if (zsocket_poll(args->sub_socket, 1000)) {
+    if (zsocket_poll(args->sub_socket, 0)) {
       zmsg_t *message = zmsg_recv (args->sub_socket);
       if (message){
         if (!args->pipe) break;
@@ -414,6 +417,7 @@ int main(int argc, char *argv[])
         zmsg_send(&message,args->pipe);
       }
     }
+    usleep(MAIN_SLEEP_TIME*1000);
   }
 
   zsocket_destroy (zmq_ctx, args->sub_socket);
