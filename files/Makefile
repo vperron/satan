@@ -2,7 +2,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=satan
 PKG_REV:=master
-PKG_VERSION:=master
+PKG_VERSION:=0.2.3
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.bz2
@@ -18,12 +18,12 @@ include $(INCLUDE_DIR)/package.mk
 define Package/satan
 SECTION:=utils
 CATEGORY:=Utilities
-TITLE:=Configuration daemon for Locarise boards
-DEPENDS:=+czmq +libuci +libjson
+TITLE:=Configuration daemon for OpenWrt boards
+DEPENDS:=+czmq +libuci
 endef
 
 define Package/satan/description
-  Configuration daemon for Locarise boards
+  Configuration daemon for OpenWRT boards
 endef
 
 define Build/Configure

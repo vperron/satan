@@ -2,11 +2,10 @@
  * =====================================================================================
  *
  *   @file uci.h
- *   @author Victor Perron (), victor.perron@locarise.com
+ *   @author Victor Perron (), victor@iso3103.net
  *   
  *        Version:  1.0
  *        Created:  12/19/2012 06:04:08 PM
- *        Company:  Locarise
  *
  *   @section DESCRIPTION
  *
@@ -14,7 +13,7 @@
  *       
  *   @section LICENSE
  *
- *       
+ *       LGPL v2.1
  *
  * =====================================================================================
  */

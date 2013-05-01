@@ -6,7 +6,6 @@
  *
  *        Version:  1.0
  *        Created:  03/29/2013 03:52:49 PM
- *        Company:  Locarise
  *
  *   @section DESCRIPTION
  *

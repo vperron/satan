@@ -2,11 +2,10 @@
  * =====================================================================================
  *
  *   @file uci.c
- *   @author Victor Perron (), victor.perron@locarise.com
+ *   @author Victor Perron (), victor@iso3103.net
  *   
  *        Version:  1.0
  *        Created:  12/19/2012 05:42:27 PM
- *        Company:  Locarise
  *
  *   @section DESCRIPTION
  *
@@ -14,7 +13,7 @@
  *       
  *   @section LICENSE
  *
- *   This code is borrowed and greatly adapted from uci CLI tool itself 
+ *   This code is borrowed and adapted from uci CLI tool itself 
  *   from nbd (Felix Fietkau)
  *       
  *
