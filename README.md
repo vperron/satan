@@ -181,6 +181,14 @@ Endpoint that satan uses to PUSH answer messages.
 Changelog
 ---------
 
+### 0.2.3
+
+**Date**: 1st May 2013
+
+* Fix zsocket_poll() 
+* Still not happy with the architecture, will move to a full actor model ASAP for 0.3
+
+
 ### 0.2.2
 
 **Date**: 10th April 2013
