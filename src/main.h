@@ -20,6 +20,7 @@
  */
 
 #include <stdio.h>
+#include <stdbool.h>
 #include <unistd.h>
 
 #ifndef _SATAN_MAIN_H_

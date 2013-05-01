@@ -21,12 +21,13 @@
  */
 
 
+#include "main.h"
+#include "config.h"
+
 #include <uci.h>
 #include <string.h>
 #include <stdlib.h>
 
-#include "main.h"
-#include "config.h"
 
 
 enum {
@@ -148,9 +149,14 @@ void config_destroy(config_context* ctx)
 	uci_free_context(ctx);
 }
 
-int config_get_str(config_context* ctx, char *key, char** output) 
+char* config_get_str(config_context* ctx, char *key) 
 {
-	return uci_cmd(ctx, CMD_GET, key, output);
+	char* buf = NULL;
+	uci_cmd(ctx, CMD_GET, key, &buf);
+  if (buf != NULL) {
+    return strdup(buf);
+  }
+  return NULL;
 }
 
 int config_get_int(config_context* ctx, char *key) 
@@ -190,32 +196,3 @@ int config_commit(config_context* ctx, char *key)
 {
 	return uci_cmd(ctx, CMD_COMMIT, key, NULL);
 }
-
-int config_get_str_ext(config_context* ctx, char *pkg, char *section, char *option, char** output)
-{
-	char key[MAX_STRING_LEN];
-	snprintf(key,MAX_STRING_LEN,"%s.%s.%s",pkg,section,option);
-	return config_get_str(ctx, key, output);
-}
-
-int config_get_int_ext(config_context* ctx, char *pkg, char *section, char *option)
-{
-	char key[MAX_STRING_LEN];
-	snprintf(key,MAX_STRING_LEN,"%s.%s.%s",pkg,section,option);
-	return config_get_int(ctx, key);
-}
-
-bool config_get_bool_ext(config_context* ctx, char *pkg, char *section, char* option)
-{
-	char key[MAX_STRING_LEN];
-	snprintf(key,MAX_STRING_LEN,"%s.%s.%s",pkg,section,option);
-	return config_get_bool(ctx, key);
-}
-
-double config_get_double_ext(config_context* ctx, char* pkg, char *section, char *option)
-{
-	char key[MAX_STRING_LEN];
-	snprintf(key,MAX_STRING_LEN,"%s.%s.%s",pkg,section,option);
-	return config_get_double(ctx, key);
-}
-

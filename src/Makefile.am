@@ -1,7 +1,7 @@
 if DEBUG_ENABLED
-AM_CFLAGS = -Wall -Werror -g -ggdb -DDEBUG -std=c99 $(zeromq_CFLAGS)
+AM_CFLAGS = -Wall -Werror -g -ggdb -DDEBUG -std=c99 -Wno-unused-function
 else
-AM_CFLAGS = -Wall -Werror -Os -s -std=c99 -DNDEBUG $(zeromq_CFLAGS)
+AM_CFLAGS = -Wall -Werror -Os -s -std=c99 -DNDEBUG
 endif
 
 bin_PROGRAMS = satan
@@ -11,5 +11,3 @@ satan_SOURCES = main.c config.c zeromq.c superfasthash.c messages.c utils.c
 else
 satan_SOURCES = main.c zeromq.c superfasthash.c messages.c utils.c
 endif
-
-satan_LDADD =

@@ -1,6 +1,5 @@
 config section 'info'
-	option uid 'my_uid'
-	option subscribe 'tcp://localhost:10080'
-	option answer 'tcp://localhost:10081'
-	option is_bound '0'
+	option uuid 'my_uid'
+	option commands 'tcp://localhost:10080'
+	option answers 'tcp://localhost:10081'
 

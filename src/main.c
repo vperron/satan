@@ -39,55 +39,36 @@
 #include "config.h"
 #endif
 
-/*** DEFINES ***/
-
 #define __STR(a) #a
 
-#define SATAN_IDENTITY "satan"
-
-#define CONF_DEVICE_UUID          "satan.info.uid"
-#define CONF_ANSWER_ENDPOINT      "satan.info.answer"
-#define CONF_SUBSCRIBE_ENDPOINT   "satan.info.subscribe"
-#define CONF_IS_BOUND             "satan.info.is_bound"
-
-#define DEFAULT_SUB_ENDPOINT "tcp://localhost:10080";
-#define DEFAULT_PUSH_ENDPOINT "tcp://localhost:10081";
-#define DEFAULT_DEVICE_UUID   "satan_client"
-#define DEFAULT_ZMQ_ISBOUND   false
+#define DEFAULT_DEVICE_UUID       "satan_client"
+#define DEFAULT_COMMANDS_ENDPOINT "tcp://localhost:10080"
+#define DEFAULT_ANSWERS_ENDPOINT  "tcp://localhost:10081"
 
 #define SATAN_CHECKSUM_SIZE 4
-#define SATAN_PUSH_ARGS_LEN 4
 #define MIN_UUID_LEN 4
 
 #define MAIN_SLEEP_TIME 100 // 100ms
 
-typedef struct _satan_args_t {
-  void *pipe;
-  void *inbox;
 
-  void *sub_socket;
-  char *sub_endpoint;
-  char *device_uuid;
-  bool is_bound;
+/*  A few globals, to be pulled with next stable */
 
-  void *push_socket;
-  char *push_endpoint;
+char *device_uuid = NULL;
+char *command_endpoint = NULL;
+char *answer_endpoint = NULL;
 
-} satan_args_t;
+void *internal_pipe = NULL;
+void *answer_socket = NULL;
+
 
 
 static void s_help(void)
 {
-  errorLog("Usage: satan [-u uuid] [-s SUB_ENDPOINT] [-p PUSH_ENDPOINT]\n");
+  errorLog("Usage: satan [-u uuid] [-s COMMAND_ENDPOINT] [-p ANSWER_ENDPOINT]\n");
   exit(1);
 }
 
-static void s_int_handler(int foo)
-{
-  zctx_interrupted = true;
-}
-
-static void s_handle_cmdline(satan_args_t *args, int argc, char** argv) {
+static void s_handle_cmdline(int argc, char** argv) {
   int flags = 0;
 
   while (1+flags < argc && argv[1+flags][0] == '-') {
@@ -95,7 +76,7 @@ static void s_handle_cmdline(satan_args_t *args, int argc, char** argv) {
       case 's':
         if (flags+2<argc) {
           flags++;
-          args->sub_endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
+          command_endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
         } else {
           errorLog("Error: Please specify a valid endpoint !");
         }
@@ -103,7 +84,7 @@ static void s_handle_cmdline(satan_args_t *args, int argc, char** argv) {
       case 'u':
         if (flags+2<argc) {
           flags++;
-          args->device_uuid = strndup(argv[1+flags],MAX_STRING_LEN);
+          device_uuid = strndup(argv[1+flags],MAX_STRING_LEN);
         } else {
           errorLog("Error: Please specify a valid uuid !");
         }
@@ -111,7 +92,7 @@ static void s_handle_cmdline(satan_args_t *args, int argc, char** argv) {
       case 'p':
         if (flags+2<argc) {
           flags++;
-          args->push_endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
+          answer_endpoint = strndup(argv[1+flags],MAX_STRING_LEN);
         } else {
           errorLog("Error: Please specify a valid endpoint !");
         }
@@ -250,9 +231,8 @@ s_parse_parseerror:
   goto s_parse_finish;
 }
 
-static int s_process_message(satan_args_t *args, char *msgid, uint8_t command, zmsg_t *arguments)
+static int s_process_message(char *msgid, uint8_t command, zmsg_t *arguments)
 {
-  assert(args);
   assert(msgid);
 
   int ret = MSG_ANSWER_UNDEFERROR;
@@ -261,7 +241,7 @@ static int s_process_message(satan_args_t *args, char *msgid, uint8_t command, z
     case MSG_COMMAND_EXEC:
       {
         char *cmd = zmsg_popstr(arguments);
-        pid_t pid = messages_exec(args->device_uuid, msgid, args->push_endpoint, cmd);
+        pid_t pid = messages_exec(device_uuid, msgid, answer_endpoint, cmd);
         if (pid == -1) {
           ret = MSG_ANSWER_EXECERROR;
         } else {
@@ -271,7 +251,7 @@ static int s_process_message(satan_args_t *args, char *msgid, uint8_t command, z
           zmsg_pushstr(msg, "%s", cmd);
           zmsg_pushstr(msg, "%s", msgid);
           zmsg_pushstr(msg, "%s", MSG_INTERNAL);
-          zmsg_send(&msg, args->pipe);
+          zmsg_send(&msg, internal_pipe);
           ret = MSG_ANSWER_TASK;
         }
       } break;
@@ -304,7 +284,7 @@ static void s_check_children_termination(zlist_t *processlist, char *device_id, 
   }
 }
 
-static void s_server_message (satan_args_t *args, zmsg_t *message)
+static void s_server_message (zmsg_t *message)
 {
   /*  Server message, to be processed  */
   uint8_t command;
@@ -314,15 +294,15 @@ static void s_server_message (satan_args_t *args, zmsg_t *message)
   zmsg_t *answer = NULL;
 
   ret = s_parse_message(message, &msgid, &command, &arguments);
-  answer = messages_parse_result2msg(args->device_uuid, ret, msgid, message);
+  answer = messages_parse_result2msg(device_uuid, ret, msgid, message);
   assert(answer != NULL);
-  zmsg_send(&answer, args->push_socket);
+  zmsg_send(&answer, answer_socket);
 
   if (ret == MSG_ANSWER_ACCEPTED) {
-    ret = s_process_message(args, msgid, command, arguments);
-    answer = messages_exec_result2msg(args->device_uuid, ret, msgid);
+    ret = s_process_message(msgid, command, arguments);
+    answer = messages_exec_result2msg(device_uuid, ret, msgid);
     assert(answer != NULL);
-    zmsg_send(&answer, args->push_socket);
+    zmsg_send(&answer, answer_socket);
   }
 
   if (msgid)
@@ -333,15 +313,11 @@ static void s_server_message (satan_args_t *args, zmsg_t *message)
 
 static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
 {
-  satan_args_t *args = (satan_args_t*)user_args;
   zlist_t *process_items = zlist_new();
 
   while (!zctx_interrupted) {
 
-    signal(SIGINT, s_int_handler);
-    signal(SIGQUIT, s_int_handler);
-
-    s_check_children_termination(process_items, args->device_uuid, args->push_socket);
+    s_check_children_termination(process_items, device_uuid, answer_socket);
 
     if (zsocket_poll(pipe, 0)) {
       zmsg_t *message = zmsg_recv (pipe);
@@ -352,7 +328,7 @@ static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
         process_item *item = utils_msg2processitem(message);
         zlist_append(process_items, item);
       } else if (str_equals(header, MSG_SERVER)) {
-        s_server_message(args, message);
+        s_server_message(message);
       }
 
       zmsg_destroy(&message);
@@ -361,74 +337,51 @@ static void s_worker_loop (void *user_args, zctx_t *ctx, void *pipe)
   }
 
   zlist_destroy(&process_items);
-  args->pipe = NULL;
 }
 
 int main(int argc, char *argv[])
 {
-  satan_args_t *args = malloc(sizeof(satan_args_t));
-
-  memset(args,0,sizeof(args));
 
 #ifdef SATAN_HAVE_UCI
-  /*  Get UCI configuration, if any.  */
   config_context *cfg_ctx = config_new();
-  config_get_str(cfg_ctx,CONF_SUBSCRIBE_ENDPOINT,&args->sub_endpoint);
-  config_get_str(cfg_ctx,CONF_DEVICE_UUID,&args->device_uuid);
-  config_get_str(cfg_ctx,CONF_ANSWER_ENDPOINT,&args->push_endpoint);
-  args->is_bound = config_get_bool(cfg_ctx, CONF_IS_BOUND);
+  device_uuid = config_get_str(cfg_ctx, "satan.info.uuid");
+  command_endpoint = config_get_str(cfg_ctx, "satan.info.commands");
+  answer_endpoint = config_get_str(cfg_ctx, "satan.info.answers");
+  config_destroy(cfg_ctx);
 #else
-  args->sub_endpoint = DEFAULT_SUB_ENDPOINT;
-  args->push_endpoint = DEFAULT_PUSH_ENDPOINT;
-  args->device_uuid = DEFAULT_DEVICE_UUID;
-  args->is_bound = DEFAULT_ZMQ_ISBOUND;
+  device_uuid = DEFAULT_DEVICE_UUID;
+  command_endpoint = DEFAULT_COMMANDS_ENDPOINT;
+  answer_endpoint = DEFAULT_ANSWERS_ENDPOINT;
 #endif
 
-  /*  Eventually override it with command line args.  */
-  s_handle_cmdline(args, argc, argv);
+  /*  override with command line args */
+  s_handle_cmdline(argc, argv);
 
-  debugLog("uuid: %s sub_endpoint: %s push_endpoint: %s bound: %d",
-      args->device_uuid, args->sub_endpoint, args->push_endpoint, args->is_bound);
-
-  /*  ZeroMQ sockets init  */
+  /*  zmq sockets and internal pipe  */
   zctx_t *zmq_ctx = zctx_new ();
-  
-  if (args->is_bound) {
-    args->sub_socket = zeromq_create_socket(zmq_ctx, args->sub_endpoint, ZMQ_SUB, args->device_uuid, false, -1, -1);
-    args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH, NULL, false, -1, -1);
-  } else {
-    args->sub_socket = zeromq_create_socket(zmq_ctx, args->sub_endpoint, ZMQ_SUB, args->device_uuid, true, -1, -1);
-    args->push_socket = zeromq_create_socket(zmq_ctx, args->push_endpoint, ZMQ_PUSH, NULL, true, -1, -1);
-  }
+  void *command_socket = zeromq_create_socket(zmq_ctx, command_endpoint, ZMQ_SUB, device_uuid, true, -1, -1);
+  answer_socket = zeromq_create_socket(zmq_ctx, answer_endpoint, ZMQ_PUSH, NULL, true, -1, -1);
+  internal_pipe = zthread_fork(zmq_ctx, s_worker_loop, NULL);
 
-  assert(args->sub_socket != NULL);
-  assert(args->push_socket != NULL);
-
-  /*  Create worker thread  */
-  args->pipe = zthread_fork(zmq_ctx, s_worker_loop, args);
+  assert (command_socket != NULL);
+  assert (answer_socket != NULL);
+  assert (internal_pipe != NULL);
 
   /*  Main listener loop */
   while (!zctx_interrupted) {
-    if (zsocket_poll(args->sub_socket, 0)) {
-      zmsg_t *message = zmsg_recv (args->sub_socket);
-      if (message){
-        if (!args->pipe) break;
-        zmsg_pushstr(message, MSG_SERVER);
-        zmsg_send(&message,args->pipe);
+    if (zsocket_poll(command_socket, 0)) {
+      zmsg_t *message = zmsg_recv (command_socket);
+      if (message != NULL){
+        zmsg_pushstr (message, MSG_SERVER);
+        zmsg_send (&message, internal_pipe);
       }
     }
-    usleep(MAIN_SLEEP_TIME*1000);
+    usleep(MAIN_SLEEP_TIME*1000); // Sleep MAIN_SLEEP_TIME msecs
   }
 
-  zsocket_destroy (zmq_ctx, args->sub_socket);
-  zsocket_destroy (zmq_ctx, args->push_socket);
+  zsocket_destroy (zmq_ctx, command_socket);
+  zsocket_destroy (zmq_ctx, answer_socket);
   zctx_destroy (&zmq_ctx);
 
-  free(args);
-
-#ifdef SATAN_HAVE_UCI
-  config_destroy(cfg_ctx);
-#endif
-
-  exit(0);
+  return 0;
 }
